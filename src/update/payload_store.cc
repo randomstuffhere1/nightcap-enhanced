@@ -662,6 +662,19 @@ bool VerifyCurrentLibrary(const std::filesystem::path& root,
     LibraryVerifyReceipt receipt;
     if (ReadLibraryVerifyReceipt(root, &receipt) &&
         LibraryReceiptCovers(receipt, payload_id, expected_sha256, fingerprint)) {
+      // The receipt already proves this exact file hashes to expected_sha256,
+      // so there is nothing left to read. The digest record is still worth
+      // writing, because it is the half of this cache the host ABI profile
+      // loader can see: it hashes the same 118 MiB later in this launch, and
+      // without a record here it pays for the read we just avoided. Recording
+      // from the receipt costs nothing, and the record's own identity check
+      // uses the same device, inode, size and mtime fields the receipt matched
+      // on, so it authorizes nothing the receipt did not.
+      if (!digest_record_directory.empty()) {
+        (void)compat::RememberedFileDigest(
+            digest_record_directory, library,
+            [&] { return receipt.library_sha256; });
+      }
       return true;
     }
   }
