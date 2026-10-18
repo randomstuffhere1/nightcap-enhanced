@@ -359,6 +359,7 @@ bool IsKnownKey(std::string_view key) {
          key == "window.title" || key == "network.use_system_proxy" ||
          key == "network.proxy_host" || key == "network.proxy_port" ||
          key == "network.ca_bundle" || key == "input.system_cursor" ||
+         key == "input.hardware_cursor" ||
          key == "integrations.discord_rpc.application_id";
 }
 
@@ -692,6 +693,15 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
       return false;
     }
     (*environment)["MOCKTAIL_SYSTEM_CURSOR"] = parsed ? "on" : "off";
+  }
+  if (const auto hardware_cursor = value("input.hardware_cursor");
+      hardware_cursor.has_value()) {
+    bool parsed = false;
+    if (!ParseBoolean(*hardware_cursor, &parsed)) {
+      *error = "input.hardware_cursor must be true or false";
+      return false;
+    }
+    (*environment)["MOCKTAIL_HARDWARE_CURSOR"] = parsed ? "on" : "off";
   }
   const auto proxy_host = value("network.proxy_host");
   const auto proxy_port = value("network.proxy_port");
@@ -1094,6 +1104,9 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue(
           "MOCKTAIL_SYSTEM_CURSOR",
           config.input_capabilities().system_cursor ? "on" : "off", error) &&
+      SetEnvironmentValue(
+          "MOCKTAIL_HARDWARE_CURSOR",
+          config.input_capabilities().hardware_cursor ? "on" : "off", error) &&
       SetEnvironmentValue("MOCKTAIL_DESKTOP_PLAYABILITY",
                           config.desktop_playability() ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",

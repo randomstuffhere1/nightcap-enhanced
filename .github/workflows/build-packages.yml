@@ -1,0 +1,523 @@
+name: Build packages
+
+# One build workflow behind both channels. `release` builds the artifacts a tag
+# publishes; `nightly` builds the rolling prerelease and adds what only the
+# nightly carries: the portable tarball and the aarch64 packages.
+#
+# aarch64 gets a .deb and an .rpm, but no AppImage, portable tarball or pacman
+# package: scripts/package_portable.sh is still x86-64 only, and Docker Hub
+# dropped arm64 from archlinux:base-devel. Both are one job away once either
+# changes.
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: release or nightly
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  # ccache and mold are detected by CMake on its own; the workflows only install
+  # them. The cache is mounted into the build containers because each one
+  # recompiles the same sources from scratch.
+  CCACHE_DIR: /ccache
+  CCACHE_MAXSIZE: 6G
+  CCACHE_COMPILERCHECK: content
+
+jobs:
+  plan:
+    name: Plan the build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      deb: ${{ steps.plan.outputs.deb }}
+      rpm: ${{ steps.plan.outputs.rpm }}
+    steps:
+      - name: Select the architectures
+        id: plan
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -Eeuo pipefail
+          case "$CHANNEL" in
+            release)
+              echo 'deb=[{"arch":"x86_64","debarch":"amd64","runner":"ubuntu-26.04"}]' >>"$GITHUB_OUTPUT"
+              echo 'rpm=[{"arch":"x86_64","rpmarch":"x86_64","runner":"ubuntu-26.04"}]' >>"$GITHUB_OUTPUT"
+              ;;
+            nightly)
+              echo 'deb=[{"arch":"x86_64","debarch":"amd64","runner":"ubuntu-26.04"},{"arch":"aarch64","debarch":"arm64","runner":"ubuntu-26.04-arm"}]' >>"$GITHUB_OUTPUT"
+              echo 'rpm=[{"arch":"x86_64","rpmarch":"x86_64","runner":"ubuntu-26.04"},{"arch":"aarch64","rpmarch":"aarch64","runner":"ubuntu-26.04-arm"}]' >>"$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::unknown channel: $CHANNEL"
+              exit 1
+              ;;
+          esac
+
+  appimage:
+    name: AppImage (AnyLinux, x86_64)
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Check release notes
+        if: inputs.channel == 'release' && startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: ./scripts/release_notes.sh "$GITHUB_REF_NAME" >/dev/null
+
+      - name: Name the AppImage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # The nightly publishes under the `nightly` tag, so its zsync points
+          # there. A tagged release needs no update information: the release
+          # asset changes name with every version.
+          echo 'APPIMAGE_NAME=Nightcap-x86_64.AppImage' >>"$GITHUB_ENV"
+          if [[ "$CHANNEL" == nightly ]]; then
+            echo "UPINFO=gh-releases-zsync|${GITHUB_REPOSITORY_OWNER}|${GITHUB_REPOSITORY#*/}|nightly|$APPIMAGE_NAME.zsync" >>"$GITHUB_ENV"
+          fi
+
+      - name: Restore ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.channel }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ inputs.channel }}-
+
+      - name: Build AppImage
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .ccache
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --volume "$GITHUB_WORKSPACE/.ccache:/ccache" \
+            --workdir /workspace \
+            --env GH_TOKEN \
+            --env UPINFO \
+            --env APPIMAGE_NAME \
+            --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            ghcr.io/archlinux/archlinux:base-devel@sha256:c3953446016873a756fb7814f10087cac1634c127f7302e80c81c512da796d05 bash -Eeuo pipefail -c '
+              pacman -Syu --noconfirm --needed \
+                cmake git ninja pkgconf lld sdl3 sdl3_ttf curl openssl \
+                nlohmann-json libyaml libelf minizip minizip-ng capstone gtk4 \
+                libadwaita webkitgtk-6.0 libutf8proc fontconfig libglvnd \
+                vulkan-headers zlib libplacebo bubblewrap xdg-dbus-proxy \
+                patchelf jq unzip file ca-certificates dbus zsync \
+                rust ccache mold
+
+              ./scripts/install_anylinux_dependencies.sh
+
+              curl --fail --location --retry 3 \
+                --output /tmp/quick-sharun \
+                https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/2a025cef14483c5bc2a75b479071f4d5c58a906f/useful-tools/quick-sharun.sh
+              echo "fa66d0189e1e87df781c049dfb23cbb1e753786056f693a4483d6d3af61e7ee1  /tmp/quick-sharun" | \
+                sha256sum --check --strict
+              chmod 0755 /tmp/quick-sharun
+
+              curl --fail --location --retry 3 \
+                --output /tmp/sharun \
+                https://github.com/pkgforge-dev/Anylinux-sharun/releases/download/2.2.6/sharun-x86_64
+              echo "a4d51752f9861b4870ca529fea04087310b28f8943cc55b99a95b777d4db92ec  /tmp/sharun" | \
+                sha256sum --check --strict
+              chmod 0755 /tmp/sharun
+
+              curl --fail --location --retry 3 \
+                --output /tmp/anylinux.c \
+                https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/2a025cef14483c5bc2a75b479071f4d5c58a906f/useful-tools/lib/anylinux.c
+              echo "f50650ad96d177559bdd0737df509fa20bd4af08887631c738fc1f31bfac185f  /tmp/anylinux.c" | \
+                sha256sum --check --strict
+
+              curl --fail --location --retry 3 \
+                --output /tmp/appimagetool \
+                https://github.com/pkgforge-dev/appimagetool/releases/download/0.3.3/appimagetool-x86_64-linux
+              echo "0d01a4e2628efc897be9663f0faeed6a171e1851270b4e1ce4c22434a36ecebd  /tmp/appimagetool" | \
+                sha256sum --check --strict
+              chmod 0755 /tmp/appimagetool
+
+              curl --fail --location --retry 3 \
+                --output /tmp/uruntime \
+                https://github.com/VHSgunzo/uruntime/releases/download/v0.5.9/uruntime-appimage-dwarfs-lite-x86_64
+              echo "cef962c299f2fa19b2b3cdf2fa1565ee8541796cc89b9a97a591f94041e8b083  /tmp/uruntime" | \
+                sha256sum --check --strict
+              chmod 0755 /tmp/uruntime
+
+              curl --fail --location --retry 3 \
+                --output /tmp/mkdwarfs \
+                https://github.com/mhx/dwarfs/releases/download/v0.15.6/dwarfs-universal-0.15.6-Linux-x86_64
+              echo "50891c38ba359db8271819a6cbf6aaa8068681523f0c4f2b8242007a45edaa28  /tmp/mkdwarfs" | \
+                sha256sum --check --strict
+              chmod 0755 /tmp/mkdwarfs
+
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/third_party/Vulkan-Headers
+              git config --global --add safe.directory /workspace/third_party/libjnivm
+              export MOCKTAIL_ANYLINUX_SYSTEM_INSTALL=1
+              export MOCKTAIL_ANYLINUX_SHARUN=/tmp/sharun
+              export MOCKTAIL_ANYLINUX_C_SOURCE=/tmp/anylinux.c
+              export RUNTIME=/tmp/uruntime
+              export DWARFS_CMD=/tmp/mkdwarfs
+              make appimage BUILD_DIR=build-appimage JOBS=4 \
+                APPIMAGE="dist/$APPIMAGE_NAME" \
+                PORTABLE_MODE=standalone APPIMAGE_FORMAT=anylinux \
+                ANYLINUX_PACKAGER=/tmp/quick-sharun \
+                ANYLINUX_APPIMAGETOOL=/tmp/appimagetool
+              test -x "dist/$APPIMAGE_NAME"
+              if [[ -n "${UPINFO:-}" ]]; then
+                test -s "dist/$APPIMAGE_NAME.zsync"
+              fi
+            '
+          sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Smoke-test AppImage without FUSE
+        shell: bash
+        run: |
+          smoke_dir="$(mktemp -d)"
+          trap 'rm -rf -- "$smoke_dir"' EXIT
+          export XDG_DATA_HOME="$smoke_dir/data"
+          export XDG_CONFIG_HOME="$smoke_dir/config"
+          export XDG_CACHE_HOME="$smoke_dir/cache"
+          export XDG_STATE_HOME="$smoke_dir/state"
+          mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_STATE_HOME"
+          if [[ -n "${UPINFO:-}" ]]; then
+            test "$("dist/$APPIMAGE_NAME" --appimage-updateinformation)" = "$UPINFO"
+          fi
+          timeout 60s "dist/$APPIMAGE_NAME" --appimage-extract-and-run --help
+          timeout 60s "dist/$APPIMAGE_NAME" --appimage-extract-and-run mocktail_updater status
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Nightcap-AppImage-x86_64
+          path: dist/${{ env.APPIMAGE_NAME }}*
+          if-no-files-found: error
+          retention-days: 14
+
+  portable:
+    # Only the nightly carries the standalone bundle. A tagged release ships
+    # the AppImage and the distribution packages.
+    name: Portable tarball (x86_64)
+    needs: plan
+    if: inputs.channel == 'nightly'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Restore ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ccache
+          key: ccache-nightly-portable-${{ github.sha }}
+          restore-keys: |
+            ccache-nightly-portable-
+
+      - name: Build the standalone bundle
+        shell: bash
+        env:
+          MOCKTAIL_PACKAGE_VERSION: nightly
+        run: |
+          set -Eeuo pipefail
+          mkdir -p .ccache
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --volume "$GITHUB_WORKSPACE/.ccache:/ccache" \
+            --workdir /workspace \
+            --env MOCKTAIL_PACKAGE_VERSION \
+            --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            ubuntu:26.04 bash -Eeuo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install --yes --no-install-recommends \
+                build-essential cmake git ninja-build pkg-config lld binutils \
+                ccache mold rustc cargo zstd patchelf unzip curl \
+                default-jdk bubblewrap xdg-dbus-proxy jq file \
+                ripgrep \
+                libsdl3-dev libsdl3-ttf-dev libcurl4-openssl-dev libssl-dev \
+                nlohmann-json3-dev libyaml-dev libelf-dev libminizip-dev \
+                libcapstone-dev libgtk-4-dev libadwaita-1-dev \
+                libwebkitgtk-6.0-dev libutf8proc-dev libfontconfig1-dev \
+                libegl-dev libvulkan-dev libplacebo-dev libpng-dev zlib1g-dev
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/third_party/Vulkan-Headers
+              git config --global --add safe.directory /workspace/third_party/libjnivm
+
+              # A standalone bundle carries apksigner and aapt, and
+              # package_portable.sh wants the real build-tools layout rather
+              # than Debian apksigner. The SDK lives inside this container and
+              # goes away with it.
+              export ANDROID_HOME=/opt/android-sdk
+              mkdir -p "$ANDROID_HOME/cmdline-tools"
+              curl --fail --location --retry 3 \
+                --output /tmp/cmdline-tools.zip \
+                https://dl.google.com/android/repository/commandlinetools-linux-16111833_latest.zip
+              echo "0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8  /tmp/cmdline-tools.zip" | \
+                sha256sum --check --strict
+              unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools-unpacked
+              mv /tmp/cmdline-tools-unpacked/cmdline-tools \
+                "$ANDROID_HOME/cmdline-tools/latest"
+              export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+              yes | sdkmanager --licenses >/dev/null 2>&1 || true
+              sdkmanager "build-tools;34.0.0" >/dev/null
+              export MOCKTAIL_ANDROID_BUILD_TOOLS_ROOT="$ANDROID_HOME/build-tools/34.0.0"
+              test -f "$MOCKTAIL_ANDROID_BUILD_TOOLS_ROOT/lib/apksigner.jar"
+
+              make build JOBS=4
+              # No --appimage: the staged directory is the deliverable, and
+              # appimagetool would delete it once it had packed it.
+              ./scripts/package_portable.sh --build-dir build --libc glibc \
+                --mode standalone --output dist/nightcap-portable
+              test -x dist/nightcap-portable/run.sh
+              # Everything lands under one directory so extraction cannot
+              # scatter files into the working directory.
+              tar --zstd -cf dist/Nightcap-x86_64-portable.tar.zst \
+                --transform "s,^\\./,Nightcap-x86_64-portable/," \
+                -C dist/nightcap-portable .
+            '
+          sudo chown -R "$(id -u):$(id -g)" .ccache dist
+          test -s dist/Nightcap-x86_64-portable.tar.zst
+
+      - name: Upload portable tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Nightcap-portable-x86_64
+          path: dist/Nightcap-x86_64-portable.tar.zst
+          if-no-files-found: error
+          retention-days: 14
+
+  arch:
+    name: Pacman package (Arch Linux, x86_64)
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Restore ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.channel }}-arch-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ inputs.channel }}-arch-
+
+      - name: Build pacman package
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "$CHANNEL" == nightly ]]; then
+            version="$(./scripts/package_version.sh --nightly)"
+          else
+            version="$(./scripts/package_version.sh)"
+          fi
+          sed -i "s/^pkgver=.*/pkgver=${version}/" packaging/arch/PKGBUILD
+          mkdir -p .ccache
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --volume "$GITHUB_WORKSPACE/.ccache:/ccache" \
+            --workdir /workspace \
+            --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            ghcr.io/archlinux/archlinux:base-devel@sha256:c3953446016873a756fb7814f10087cac1634c127f7302e80c81c512da796d05 bash -Eeuo pipefail -c '
+              pacman -Syu --needed --noconfirm \
+                cmake git ninja pkgconf lld sdl3 sdl3_ttf curl openssl \
+                nlohmann-json libyaml libelf minizip capstone gtk4 \
+                libadwaita webkitgtk-6.0 libutf8proc fontconfig libpng \
+                libplacebo vulkan-headers vulkan-icd-loader libglvnd zlib \
+                rust ccache mold
+              useradd --create-home builder
+              chown -R builder:builder /workspace
+              runuser -u builder -- env MOCKTAIL_SOURCE_DIR=/workspace \
+                makepkg --dir /workspace/packaging/arch \
+                  --noconfirm --cleanbuild --force
+              install -d dist/arch
+              cp packaging/arch/*.pkg.tar.zst dist/arch/
+              pacman -Qp dist/arch/*.pkg.tar.zst >/dev/null
+            '
+          sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Upload pacman package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Nightcap-Arch-x86_64
+          path: dist/arch/*.pkg.tar.zst
+          if-no-files-found: error
+          retention-days: 14
+
+  deb:
+    name: DEB (Ubuntu 26.04, ${{ matrix.arch }})
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.deb) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Restore ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ccache
+          key: ccache-deb-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            ccache-deb-${{ matrix.arch }}-
+
+      - name: Build DEB
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$CHANNEL" == nightly ]]; then
+            version="$(./scripts/package_version.sh --nightly)"
+          else
+            version="$(./scripts/package_version.sh)"
+          fi
+          mkdir -p .ccache
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --volume "$GITHUB_WORKSPACE/.ccache:/ccache" \
+            --workdir /workspace \
+            --env MOCKTAIL_PACKAGE_VERSION="$version" \
+            --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            ubuntu:26.04 bash -Eeuo pipefail -c '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install --yes --no-install-recommends \
+                build-essential cmake git ninja-build pkg-config lld \
+                ccache mold rustc cargo fakeroot dpkg-dev file \
+                libsdl3-dev libsdl3-ttf-dev libcurl4-openssl-dev libssl-dev \
+                nlohmann-json3-dev libyaml-dev libelf-dev libminizip-dev \
+                libcapstone-dev libgtk-4-dev libadwaita-1-dev \
+                libwebkitgtk-6.0-dev libutf8proc-dev libfontconfig1-dev \
+                libegl-dev libvulkan-dev libplacebo-dev libpng-dev zlib1g-dev
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/third_party/Vulkan-Headers
+              git config --global --add safe.directory /workspace/third_party/libjnivm
+              cmake -S . -B build-deb -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=/usr \
+                -DMOCKTAIL_PACKAGE_NAME=nightcap \
+                -DMOCKTAIL_PACKAGE_VERSION="$MOCKTAIL_PACKAGE_VERSION" \
+                -DBUILD_TESTING=OFF
+              cmake --build build-deb --parallel 4
+              cpack --config build-deb/CPackConfig.cmake \
+                -G DEB -B dist/deb
+              dpkg-deb --info dist/deb/*.deb >/dev/null
+            '
+          sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Nightcap-DEB-${{ matrix.arch }}
+          path: dist/deb/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  rpm:
+    name: RPM (Fedora 44, ${{ matrix.arch }})
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.rpm) }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Restore ccache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .ccache
+          key: ccache-rpm-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: |
+            ccache-rpm-${{ matrix.arch }}-
+
+      - name: Build RPM
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$CHANNEL" == nightly ]]; then
+            version="$(./scripts/package_version.sh --nightly)"
+          else
+            version="$(./scripts/package_version.sh)"
+          fi
+          mkdir -p .ccache
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --volume "$GITHUB_WORKSPACE/.ccache:/ccache" \
+            --workdir /workspace \
+            --env MOCKTAIL_PACKAGE_VERSION="$version" \
+            --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            fedora:44 bash -Eeuo pipefail -c '
+              dnf install --assumeyes \
+                gcc-c++ cmake git ninja-build pkgconf-pkg-config lld rpm-build \
+                ccache mold rust cargo \
+                SDL3-devel SDL3_ttf-devel libcurl-devel openssl-devel \
+                nlohmann-json-devel libyaml-devel elfutils-libelf-devel \
+                minizip-ng-compat-devel capstone-devel gtk4-devel libadwaita-devel \
+                webkitgtk6.0-devel utf8proc-devel fontconfig-devel \
+                libglvnd-devel vulkan-headers vulkan-loader-devel \
+                libplacebo-devel zlib-ng-compat-devel libpng-devel
+              git config --global --add safe.directory /workspace
+              git config --global --add safe.directory /workspace/third_party/Vulkan-Headers
+              git config --global --add safe.directory /workspace/third_party/libjnivm
+              cmake -S . -B build-rpm -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=/usr \
+                -DCMAKE_INSTALL_LIBDIR=lib \
+                -DMOCKTAIL_PACKAGE_NAME=nightcap \
+                -DMOCKTAIL_PACKAGE_VERSION="$MOCKTAIL_PACKAGE_VERSION" \
+                -DBUILD_TESTING=OFF
+              cmake --build build-rpm --parallel 4
+              cpack --config build-rpm/CPackConfig.cmake \
+                -G RPM -B dist/rpm
+              rpm --query --package --info dist/rpm/*.rpm >/dev/null
+            '
+          sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: Nightcap-RPM-${{ matrix.arch }}
+          path: dist/rpm/*.rpm
+          if-no-files-found: error
+          retention-days: 14

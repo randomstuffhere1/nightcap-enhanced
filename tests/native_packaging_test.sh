@@ -18,6 +18,7 @@ readonly AUR_WORKFLOW="${ROOT}/.github/workflows/aur.yml"
 readonly AUR_PUBLISH_WORKFLOW="${ROOT}/.github/workflows/aur-publish.yml"
 readonly WORKFLOW="${ROOT}/.github/workflows/packages.yml"
 readonly RELEASE_WORKFLOW="${ROOT}/.github/workflows/release.yml"
+readonly BUILD_WORKFLOW="${ROOT}/.github/workflows/build-packages.yml"
 readonly README="${ROOT}/README.md"
 readonly STUB_CMAKE="${ROOT}/stubs/CMakeLists.txt"
 readonly ANDROID_STUB="${ROOT}/stubs/libandroid_stub.cc"
@@ -148,31 +149,72 @@ grep -Fq 'MOCKTAIL_MINIZIP_HAS_STREAM_TELL' "${STUB_CMAKE}" ||
 grep -Fq 'mz_stream_tell(unzGetStream(archive))' "${ANDROID_STUB}" ||
   Fail 'Android assets do not support the minizip-ng offset API'
 
+# The builds live in build-packages.yml, shared by the nightly and the tagged
+# release. Every container has to install the Rust toolchain the texture
+# kernels need, and the nightly adds the portable tarball and the aarch64
+# packages on top of what a release builds.
+for expected in \
+    'workflow_call:' \
+    'APPIMAGE_NAME=Nightcap-x86_64.AppImage' \
+    '|nightly|$APPIMAGE_NAME.zsync' \
+    'test "$("dist/$APPIMAGE_NAME" --appimage-updateinformation)" = "$UPINFO"' \
+    'MOCKTAIL_ANDROID_BUILD_TOOLS_ROOT' \
+    'commandlinetools-linux-16111833_latest.zip' \
+    './scripts/package_portable.sh' \
+    'Nightcap-x86_64-portable.tar.zst' \
+    'makepkg --dir' \
+    '-G DEB' \
+    '-G RPM' \
+    '-DMOCKTAIL_PACKAGE_NAME=nightcap' \
+    '-DMOCKTAIL_PACKAGE_VERSION=' \
+    'package_version.sh --nightly' \
+    'ubuntu-26.04-arm'; do
+  grep -Fq -- "${expected}" "${BUILD_WORKFLOW}" ||
+    Fail "package build workflow is missing: ${expected}"
+done
+
+# One Rust declaration per package manager: pacman and the AppImage container
+# say rust, dnf says rust, apt says rustc cargo. A missing one fails the
+# contracts job rather than a nightly run, once the build gets that far.
+for expected in \
+    'rust ccache mold' \
+    'ccache mold rust cargo' \
+    'rustc cargo'; do
+  grep -Fq -- "${expected}" "${BUILD_WORKFLOW}" ||
+    Fail "package build workflow does not declare the Rust toolchain: ${expected}"
+done
+
+# The build workflow is reusable, so it never carries a trigger or a write
+# permission of its own. Both come from the workflow that calls it.
+for unexpected in \
+    'push:' \
+    'pull_request:' \
+    'schedule:' \
+    'workflow_dispatch:' \
+    'contents: write'; do
+  if grep -Fq -- "${unexpected}" "${BUILD_WORKFLOW}"; then
+    Fail "package build workflow should not contain: ${unexpected}"
+  fi
+done
+
+# The nightly runs on a schedule and on demand, then tags `nightly` rather than
+# upstream's `continuous`, so the two channels cannot overwrite each other.
 for expected in \
     'cron:' \
-    'APPIMAGE_FORMAT=anylinux' \
-    'quick-sharun' \
-    './scripts/install_anylinux_dependencies.sh' \
-    '--env GH_TOKEN' \
-    'MOCKTAIL_ANYLINUX_SYSTEM_INSTALL=1' \
-    '--appimage-extract-and-run mocktail_updater status' \
-    'APPIMAGE=dist/Nightcap-x86_64.AppImage' \
-    '|nightly|Nightcap-x86_64.AppImage.zsync' \
-    '--env UPINFO' \
-    'test -s dist/Nightcap-x86_64.AppImage.zsync' \
-    '--appimage-updateinformation' \
-    'Nightcap-x86_64.AppImage.zsync|' \
+    'uses: ./.github/workflows/build-packages.yml' \
+    'channel: nightly' \
+    'git tag --force "$TAG"' \
+    'gh release upload "$TAG"' \
     'github-actions[bot]' \
-    'gh release upload' \
-    'MOCKTAIL_ANDROID_BUILD_TOOLS_ROOT' \
-    '--mode standalone' \
+    'Nightcap-x86_64.AppImage' \
+    'Nightcap-x86_64.AppImage.zsync' \
     'Nightcap-x86_64-portable.tar.zst' \
     'nightcap-nightly-x86_64.pkg.tar.zst' \
     'nightcap-nightly_amd64.deb' \
     'nightcap-nightly_arm64.deb' \
+    'nightcap-nightly-x86_64.rpm' \
     'nightcap-nightly-aarch64.rpm' \
-    'SHA256SUMS' \
-    'ubuntu-26.04-arm'; do
+    'SHA256SUMS'; do
   grep -Fq -- "${expected}" "${WORKFLOW}" ||
     Fail "nightly workflow is missing: ${expected}"
 done
@@ -188,11 +230,8 @@ for unexpected in \
 done
 
 for expected in \
-    '-G DEB' \
-    '-G RPM' \
-    'makepkg --dir' \
-    '-DMOCKTAIL_PACKAGE_NAME=nightcap' \
-    '-DMOCKTAIL_PACKAGE_VERSION=' \
+    'uses: ./.github/workflows/build-packages.yml' \
+    'channel: release' \
     'Nightcap-x86_64.AppImage' \
     'gh release upload' \
     'uses: ./.github/workflows/aur-publish.yml'; do
@@ -200,16 +239,44 @@ for expected in \
     Fail "release workflow is missing: ${expected}"
 done
 
-# This workflow publishes on the release page only. It hands the AUR push to
-# aur-publish.yml, and APT and RPM repositories are out of scope.
-for unexpected in \
-    'createrepo' \
-    'reprepro' \
-    'aur.archlinux.org'; do
-  if grep -Fq -- "${unexpected}" "${RELEASE_WORKFLOW}"; then
-    Fail "release workflow should not publish to a repository: ${unexpected}"
-  fi
+for workflow in "${RELEASE_WORKFLOW}" "${WORKFLOW}" "${BUILD_WORKFLOW}"; do
+  for unexpected in \
+      'createrepo' \
+      'reprepro' \
+      'aur.archlinux.org'; do
+    if grep -Fq -- "${unexpected}" "${workflow}"; then
+      Fail "workflow should not publish to a repository: ${workflow}: ${unexpected}"
+    fi
+  done
 done
+
+VERSION_SCRIPT="$(realpath -- "${ROOT}/scripts/package_version.sh")"
+readonly VERSION_SCRIPT
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
+version_repo="$(mktemp -d)"
+trap 'rm -rf -- "${version_repo}"' EXIT
+VersionGit() {
+  git -C "${version_repo}" -c user.name=test -c user.email=test@example.com \
+    -c commit.gpgsign=false -c tag.gpgsign=false "$@"
+}
+VersionIn() {
+  (cd "${version_repo}" && GITHUB_REF_NAME= bash "${VERSION_SCRIPT}" "$@")
+}
+VersionGit init --quiet
+VersionGit commit --quiet --allow-empty -m first
+[[ "$(VersionIn --nightly)" == "0.0.0+r1.g$(VersionGit rev-parse --short=7 HEAD)" ]] ||
+  Fail 'nightly version without a release tag does not count from 0.0.0'
+VersionGit tag v0.3.4
+VersionGit commit --quiet --allow-empty -m second
+VersionGit commit --quiet --allow-empty -m third
+VersionGit tag continuous
+[[ "$(VersionIn --nightly)" == "0.3.4+r2.g$(VersionGit rev-parse --short=7 HEAD)" ]] ||
+  Fail 'nightly version does not sort between the last release and the next'
+[[ "$(VersionIn v0.4.0)" == 0.4.0 ]] ||
+  Fail 'release tag does not give its own version'
+[[ "$(VersionIn main)" == 0.0.0 ]] ||
+  Fail 'a branch does not give the placeholder version'
 
 grep -Fq 'Ubuntu 26.04+' "${README}" ||
   Fail 'README has no Ubuntu source dependency guide'
