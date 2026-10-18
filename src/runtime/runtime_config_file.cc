@@ -358,7 +358,7 @@ bool IsKnownKey(std::string_view key) {
          key == "performance.memory_limit_mb" || key == "performance.gamemode" ||
          key == "window.title" || key == "network.use_system_proxy" ||
          key == "network.proxy_host" || key == "network.proxy_port" ||
-         key == "network.ca_bundle" ||
+         key == "network.ca_bundle" || key == "input.system_cursor" ||
          key == "integrations.discord_rpc.application_id";
 }
 
@@ -683,6 +683,15 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
   }
   if (!ApplyFields(kInputFields, yaml, environment, error)) {
     return false;
+  }
+  if (const auto system_cursor = value("input.system_cursor");
+      system_cursor.has_value()) {
+    bool parsed = false;
+    if (!ParseBoolean(*system_cursor, &parsed)) {
+      *error = "input.system_cursor must be true or false";
+      return false;
+    }
+    (*environment)["MOCKTAIL_SYSTEM_CURSOR"] = parsed ? "on" : "off";
   }
   const auto proxy_host = value("network.proxy_host");
   const auto proxy_port = value("network.proxy_port");
@@ -1082,6 +1091,9 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_RAW_MOUSE",
                           config.input_capabilities().raw_mouse ? "on" : "off",
                           error) &&
+      SetEnvironmentValue(
+          "MOCKTAIL_SYSTEM_CURSOR",
+          config.input_capabilities().system_cursor ? "on" : "off", error) &&
       SetEnvironmentValue("MOCKTAIL_DESKTOP_PLAYABILITY",
                           config.desktop_playability() ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",

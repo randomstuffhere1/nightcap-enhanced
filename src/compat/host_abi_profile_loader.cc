@@ -33,7 +33,7 @@
 #include <openssl/evp.h>
 
 #include "compat/elf_build_id.h"
-#include "compat/file_digest_cache.h"
+#include "compat/file_digest_record.h"
 #include "compat/guest_abi.h"
 
 namespace mocktail::compat {
@@ -1228,37 +1228,24 @@ ExternalHostAbiProfileResult LoadExternalHostAbiProfile(
   }
 
   // The payload's own hash was already verified once this launch by the update
-  // preflight, which runs before the linker is reached. A cached record that
+  // preflight, which runs before the linker is reached. A digest record that
   // matches this exact file identity lets the second hash in the same launch be
   // skipped; a missing or mismatched record simply hashes it, so this changes
-  // how long the check takes and nothing about what it proves.
-  const FileSha256Result payload_hash = [&] {
-    FileIdentity identity;
-    if (!PayloadDigestCachingDisabled() &&
-        ReadFileIdentity(*canonical_payload, &identity)) {
-      FileDigestRecord record;
-      if (ReadFileDigestRecord(&record) &&
-          FileDigestRecordCovers(record, *canonical_payload, identity) &&
-          record.digest == encoded_payload_sha256) {
-        return FileSha256Result{record.digest, {}};
-      }
-    }
-    const FileSha256Result computed = ComputeFileSha256(*canonical_payload);
-    if (computed && !PayloadDigestCachingDisabled() &&
-        ReadFileIdentity(*canonical_payload, &identity)) {
-      FileDigestRecord write_record;
-      write_record.path = *canonical_payload;
-      write_record.digest = computed.sha256;
-      write_record.identity = identity;
-      std::string error;
-      if (!WriteFileDigestRecord(write_record, &error)) {
-        std::cerr << "  [compat] cannot record payload digest cache: " << error
-                  << '\n';
-      }
-    }
-    return computed;
-  }();
-  if (!payload_hash || payload_hash.sha256 != encoded_payload_sha256) {
+  // how long the check takes and nothing about what it proves. An empty record
+  // directory means there is nowhere to read or write a record, which is also
+  // what MOCKTAIL_REVERIFY_PAYLOAD asks for.
+  const std::filesystem::path digest_record_directory =
+      PayloadDigestCachingDisabled()
+          ? std::filesystem::path()
+          : std::filesystem::path(request.digest_record_directory);
+  std::string payload_hash_error;
+  const std::string payload_digest = RememberedFileDigest(
+      digest_record_directory, *canonical_payload, [&] {
+        FileSha256Result hashed = ComputeFileSha256(*canonical_payload);
+        payload_hash_error = hashed.error;
+        return hashed.sha256;
+      });
+  if (!payload_hash_error.empty() || payload_digest != encoded_payload_sha256) {
     return Failure(
         "external host ABI profile SHA-256 does not match payload bytes");
   }
@@ -1272,7 +1259,7 @@ ExternalHostAbiProfileResult LoadExternalHostAbiProfile(
   }
 
   profile->canonical_payload_path = *canonical_payload;
-  profile->payload_sha256 = payload_hash.sha256;
+  profile->payload_sha256 = payload_digest;
   profile->profile_sha256 = profile_sha256;
 
   if (FindHostAbiProfile(profile->build_id) != nullptr) {
@@ -1288,7 +1275,7 @@ ExternalHostAbiProfileResult LoadExternalHostAbiProfile(
         CanonicalRegularPath(request.approval_receipt_path, &path_error);
     if (!canonical_receipt.has_value() ||
         !ValidateReceipt(*canonical_receipt, *canonical_payload,
-                         payload_hash.sha256, profile_sha256, payload_id,
+                         payload_digest, profile_sha256, payload_id,
                          profile->build_id, *canonical_manifest, &path_error)) {
       return Failure(path_error);
     }
@@ -1300,7 +1287,8 @@ ExternalHostAbiProfileResult InitializeHostAbiProfileFromEnvironment(
     const std::string& payload_path,
     const std::string& compatibility_manifest_path,
     const std::string& expected_build_id,
-    bool explicit_unverified_authorization) {
+    bool explicit_unverified_authorization,
+    const std::string& digest_record_directory) {
   const char* profile_file = std::getenv("MOCKTAIL_HOST_ABI_PROFILE_FILE");
   const char* canary = std::getenv("MOCKTAIL_HOST_ABI_CANARY");
   const char* candidate_process =
@@ -1337,6 +1325,7 @@ ExternalHostAbiProfileResult InitializeHostAbiProfileFromEnvironment(
   request.compatibility_manifest_path = compatibility_manifest_path;
   request.expected_build_id = expected_build_id;
   request.approval_receipt_path = has_receipt ? receipt : "";
+  request.digest_record_directory = digest_record_directory;
   request.candidate_canary = candidate_canary;
   request.candidate_process_authorization = candidate_process_authorization;
   request.explicit_unverified_authorization = explicit_unverified_authorization;

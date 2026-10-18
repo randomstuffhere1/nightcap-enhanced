@@ -545,12 +545,15 @@ Status ValidateSelector(const LaunchFields& fields) {
     // because the client is expected to resolve a server itself. That is an
     // ordinary public launch, not a malformed request. Conflicting selectors
     // are still rejected by the selector_count > 1 check above, so no gate is
-    // lost by accepting the instance-less form.
+    // lost by accepting the instance-less form; a lone private selector is
+    // still refused, because that is not a public launch.
     //
     // Note the request type is validated but never forwarded: MakeRequest only
     // emits the join identity, so rejecting here could only ever refuse a join
     // the pipeline was always prepared to make.
-    return Status::Ok();
+    return selector_count == 0 || !fields.game_instance_id.empty()
+               ? Status::Ok()
+               : Invalid("RequestGameJob contains a non-public join selector");
   }
   if (request == "requestprivategame") {
     return private_join || !fields.reserved_server_access_code.empty()

@@ -1607,6 +1607,14 @@ void SetGameSessionActive(bool active) {
   }
 }
 
+void PublishRobloxCursor(CursorShape shape) {
+  const std::shared_ptr<WindowPointerCaptureOwner> owner =
+      SharedPointerCaptureOwner();
+  if (owner != nullptr) {
+    owner->PublishRobloxCursor(shape);
+  }
+}
+
 void ClearMouseLockQueryCallback() {
   const std::shared_ptr<WindowPointerCaptureOwner> owner =
       SharedPointerCaptureOwner();
@@ -2218,11 +2226,10 @@ bool HandleFullscreenShortcut(const SDL_Event& event) {
 void MaybeRequestFullscreenReadiness() {
   // Latched, for the same reason as MaybeQueueInputReadinessSequence: this is
   // called every tick from the main loop.
-  static const bool single_transition =
-      StringEquals(GetEnvNonEmpty("MOCKTAIL_FULLSCREEN_READINESS"), "1");
-  static const bool round_trip =
-      StringEquals(GetEnvNonEmpty("MOCKTAIL_FULLSCREEN_READINESS"),
-                   "roundtrip");
+  static const char* const mode =
+      GetEnvNonEmpty("MOCKTAIL_FULLSCREEN_READINESS");
+  static const bool single_transition = StringEquals(mode, "1");
+  static const bool round_trip = StringEquals(mode, "roundtrip");
   if ((!single_transition && !round_trip) || !HasPresentedFrame()) {
     return;
   }

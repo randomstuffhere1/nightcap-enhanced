@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "compat/elf_build_id.h"
+#include "compat/file_digest_record.h"
 #include "update/apk_bundle.h"
 #include "update/apk_provider.h"
 #include "update/apkpure_provider.h"
@@ -745,7 +746,10 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request) {
                      configured.config.reverify_library_on_launch);
   const PayloadStoreResult current = [&] {
     StageTimer timer("verify-current");
-    return store.VerifyCurrent();
+    return store.VerifyCurrent(
+        paths.cache_root.empty()
+            ? std::filesystem::path()
+            : paths.cache_root / compat::kFileDigestRecordDirectory);
   }();
   PayloadStoreResult installed = current;
   if (!current && !current.payload_id.empty() &&

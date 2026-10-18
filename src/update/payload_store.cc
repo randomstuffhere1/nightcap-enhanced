@@ -24,6 +24,7 @@
 #include <string_view>
 #include <utility>
 
+#include "compat/file_digest_record.h"
 #include "update/candidate_approval.h"
 #include "update/compatibility_catalog.h"
 #include "update/launch_cache.h"
@@ -641,10 +642,17 @@ bool PersistPayloadSha256(const std::filesystem::path& root,
 // on every stage, promote, and rollback. `reverify` forces the hash even when a
 // receipt matches, which is the setting to reach for if a payload's provenance
 // is ever in doubt.
+//
+// `digest_record_directory` is a second, coarser cache keyed on the file's
+// identity rather than on a receipt this store wrote. The host ABI profile
+// loader hashes the same 118 MiB later in the same launch, and a record here is
+// what lets that second check skip the read. `reverify` bypasses it as well, so
+// asking for a full re-hash still gets one.
 bool VerifyCurrentLibrary(const std::filesystem::path& root,
                           std::string_view payload_id,
                           const std::filesystem::path& payload_directory,
                           std::string_view expected_sha256, bool reverify,
+                          const std::filesystem::path& digest_record_directory,
                           std::string* error) {
   const std::filesystem::path library = payload_directory / "libroblox.so";
   LibraryFingerprint fingerprint;
@@ -658,7 +666,11 @@ bool VerifyCurrentLibrary(const std::filesystem::path& root,
     }
   }
 
-  const std::string actual = HashRegularFile(library, error);
+  const std::string actual =
+      reverify ? HashRegularFile(library, error)
+               : compat::RememberedFileDigest(
+                     digest_record_directory, library,
+                     [&] { return HashRegularFile(library, error); });
   if (!error->empty()) return false;
   if (actual != expected_sha256) {
     *error = "current payload library hash mismatch";
@@ -951,7 +963,8 @@ PayloadStoreResult PayloadStore::Import(
   return Promote(staged.payload_id);
 }
 
-PayloadStoreResult PayloadStore::VerifyCurrent() {
+PayloadStoreResult PayloadStore::VerifyCurrent(
+    const std::filesystem::path& digest_record_directory) {
   PayloadStoreResult result;
   StoreLock lock(root_, &result.error);
   if (!lock) return result;
@@ -966,8 +979,8 @@ PayloadStoreResult PayloadStore::VerifyCurrent() {
     return result;
   }
   if (!VerifyCurrentLibrary(root_, result.payload_id, result.payload_directory,
-                            payload.metadata.library_sha256,
-                            reverify_library_, &result.error)) {
+                            payload.metadata.library_sha256, reverify_library_,
+                            digest_record_directory, &result.error)) {
     return result;
   }
   std::string support_error;
