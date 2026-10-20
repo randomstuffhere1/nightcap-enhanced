@@ -361,7 +361,7 @@ jobs:
               cp packaging/arch/*.pkg.tar.zst dist/arch/
               pacman -Qp dist/arch/*.pkg.tar.zst >/dev/null
             '
-          sudo chown -R "$(id -u):$(id -g)" .ccache dist
+          sudo chown -R "$(id -u):$(id -g)" dist
 
       - name: Upload pacman package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
