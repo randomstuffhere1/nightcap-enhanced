@@ -84,6 +84,8 @@ Release notes on GitHub are taken from the matching section here.
 - The nightly prerelease is built on every push to `main` instead of on a daily schedule. GitHub turns the
   scheduled workflows of an inactive repository off, so the schedule could silently stop and leave the
   prerelease stale. A push whose commit already carries the `nightly` tag builds nothing.
+- The package builds share a ccache between the runs, so a build that follows the previous one starts warm
+  instead of compiling the whole tree again. A cache that is six hours old is dropped rather than used.
 - This fork's own `integrations.server_location_indicator` is retired. The overlay does the same job and shows
   more: the server's region after a join, your frame rate and your ping. The old switch now turns on
   `overlay.location`, and it is kept as a legacy alias, so a `config.yaml` that still carries it keeps loading.

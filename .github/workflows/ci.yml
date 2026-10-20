@@ -1,24 +1,8 @@
 name: CI
 
+# The nightly workflow publishes on a push, so the CI workflow waits for a
+# pull request instead of running a second time for the same commit.
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/**'
-      - 'CMakeLists.txt'
-      - 'Makefile'
-      - 'README.md'
-      - '.gitmodules'
-      - 'cmake/**'
-      - 'config/**'
-      - 'include/**'
-      - 'packaging/**'
-      - 'rust/**'
-      - 'scripts/**'
-      - 'src/**'
-      - 'stubs/**'
-      - 'tests/**'
-      - 'third_party/**'
   pull_request:
     paths:
       - '.github/workflows/**'
@@ -98,6 +82,11 @@ jobs:
     name: Native build (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    permissions:
+      contents: read
+      # The ccache action drops the older caches of its scope, which needs
+      # the Actions permission.
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -110,8 +99,12 @@ jobs:
       # CMake picks both up on its own (ccache becomes the compiler launcher,
       # mold wins over lld), so the workflows only have to install them.
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 6G
+      CCACHE_MAXSIZE: 2G
       CCACHE_COMPILERCHECK: content
+      # The path of the source tree is part of the cache key, so it is made
+      # relative to the checkout to keep the cache usable when the runner
+      # hands the build a different directory.
+      CCACHE_BASEDIR: ${{ github.workspace }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -143,12 +136,10 @@ jobs:
           cargo --version
 
       - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: ./.github/actions/ccache
         with:
-          path: .ccache
-          key: ccache-${{ matrix.arch }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'stubs/**', 'rust/crates/**/src/**', 'rust/Cargo.lock') }}
-          restore-keys: |
-            ccache-${{ matrix.arch }}-
+          scope: ccache-ci-${{ matrix.arch }}
+          mode: restore
 
       - name: Build and check native executables
         shell: bash
@@ -164,6 +155,12 @@ jobs:
           grep -q 'MOCKTAIL_MOLD_PROGRAM' build-ci/CMakeCache.txt ||
             { echo "::error::mold was not detected"; exit 1; }
           ccache --show-stats | tail -5
+
+      - name: Save ccache
+        uses: ./.github/actions/ccache
+        with:
+          scope: ccache-ci-${{ matrix.arch }}
+          mode: save
 
       - name: Run C++ and integration tests
         shell: bash

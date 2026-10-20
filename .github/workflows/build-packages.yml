@@ -17,15 +17,12 @@ on:
         type: string
         required: true
 
-permissions:
-  contents: read
-
 env:
   # ccache and mold are detected by CMake on its own; the workflows only install
   # them. The cache is mounted into the build containers because each one
   # recompiles the same sources from scratch.
   CCACHE_DIR: /ccache
-  CCACHE_MAXSIZE: 6G
+  CCACHE_MAXSIZE: 2G
   CCACHE_COMPILERCHECK: content
 
 jobs:
@@ -94,12 +91,10 @@ jobs:
           fi
 
       - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: ./.github/actions/ccache
         with:
-          path: .ccache
-          key: ccache-${{ inputs.channel }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ inputs.channel }}-
+          scope: ccache-appimage-x86_64
+          mode: restore
 
       - name: Build AppImage
         shell: bash
@@ -115,6 +110,7 @@ jobs:
             --env UPINFO \
             --env APPIMAGE_NAME \
             --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            --env CCACHE_BASEDIR=/workspace \
             ghcr.io/archlinux/archlinux:base-devel@sha256:c3953446016873a756fb7814f10087cac1634c127f7302e80c81c512da796d05 bash -Eeuo pipefail -c '
               pacman -Syu --noconfirm --needed \
                 cmake git ninja pkgconf lld sdl3 sdl3_ttf curl openssl \
@@ -184,8 +180,15 @@ jobs:
               if [[ -n "${UPINFO:-}" ]]; then
                 test -s "dist/$APPIMAGE_NAME.zsync"
               fi
+              ccache --show-stats | tail -5
             '
           sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Save ccache
+        uses: ./.github/actions/ccache
+        with:
+          scope: ccache-appimage-x86_64
+          mode: save
 
       - name: Smoke-test AppImage without FUSE
         shell: bash
@@ -227,12 +230,10 @@ jobs:
           submodules: recursive
 
       - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: ./.github/actions/ccache
         with:
-          path: .ccache
-          key: ccache-nightly-portable-${{ github.sha }}
-          restore-keys: |
-            ccache-nightly-portable-
+          scope: ccache-portable-x86_64
+          mode: restore
 
       - name: Build the standalone bundle
         shell: bash
@@ -247,6 +248,7 @@ jobs:
             --workdir /workspace \
             --env MOCKTAIL_PACKAGE_VERSION \
             --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            --env CCACHE_BASEDIR=/workspace \
             ubuntu:26.04 bash -Eeuo pipefail -c '
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
@@ -295,9 +297,16 @@ jobs:
               tar --zstd -cf dist/Nightcap-x86_64-portable.tar.zst \
                 --transform "s,^\\./,Nightcap-x86_64-portable/," \
                 -C dist/nightcap-portable .
+              ccache --show-stats | tail -5
             '
           sudo chown -R "$(id -u):$(id -g)" .ccache dist
           test -s dist/Nightcap-x86_64-portable.tar.zst
+
+      - name: Save ccache
+        uses: ./.github/actions/ccache
+        with:
+          scope: ccache-portable-x86_64
+          mode: save
 
       - name: Upload portable tarball
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -321,14 +330,6 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: .ccache
-          key: ccache-${{ inputs.channel }}-arch-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ inputs.channel }}-arch-
-
       - name: Build pacman package
         shell: bash
         run: |
@@ -339,12 +340,11 @@ jobs:
             version="$(./scripts/package_version.sh)"
           fi
           sed -i "s/^pkgver=.*/pkgver=${version}/" packaging/arch/PKGBUILD
-          mkdir -p .ccache
+          # makepkg builds in a clean chroot that has no ccache, so this
+          # job shares no cache with the others.
           docker run --rm \
             --volume "$GITHUB_WORKSPACE:/workspace" \
-            --volume "$GITHUB_WORKSPACE/.ccache:/ccache" \
             --workdir /workspace \
-            --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
             ghcr.io/archlinux/archlinux:base-devel@sha256:c3953446016873a756fb7814f10087cac1634c127f7302e80c81c512da796d05 bash -Eeuo pipefail -c '
               pacman -Syu --needed --noconfirm \
                 cmake git ninja pkgconf lld sdl3 sdl3_ttf curl openssl \
@@ -388,12 +388,10 @@ jobs:
           submodules: recursive
 
       - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: ./.github/actions/ccache
         with:
-          path: .ccache
-          key: ccache-deb-${{ matrix.arch }}-${{ github.sha }}
-          restore-keys: |
-            ccache-deb-${{ matrix.arch }}-
+          scope: ccache-deb-${{ matrix.arch }}
+          mode: restore
 
       - name: Build DEB
         shell: bash
@@ -413,6 +411,7 @@ jobs:
             --workdir /workspace \
             --env MOCKTAIL_PACKAGE_VERSION="$version" \
             --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            --env CCACHE_BASEDIR=/workspace \
             ubuntu:26.04 bash -Eeuo pipefail -c '
               export DEBIAN_FRONTEND=noninteractive
               apt-get update
@@ -437,8 +436,15 @@ jobs:
               cpack --config build-deb/CPackConfig.cmake \
                 -G DEB -B dist/deb
               dpkg-deb --info dist/deb/*.deb >/dev/null
+              ccache --show-stats | tail -5
             '
           sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Save ccache
+        uses: ./.github/actions/ccache
+        with:
+          scope: ccache-deb-${{ matrix.arch }}
+          mode: save
 
       - name: Upload DEB
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -465,12 +471,10 @@ jobs:
           submodules: recursive
 
       - name: Restore ccache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: ./.github/actions/ccache
         with:
-          path: .ccache
-          key: ccache-rpm-${{ matrix.arch }}-${{ github.sha }}
-          restore-keys: |
-            ccache-rpm-${{ matrix.arch }}-
+          scope: ccache-rpm-${{ matrix.arch }}
+          mode: restore
 
       - name: Build RPM
         shell: bash
@@ -490,6 +494,7 @@ jobs:
             --workdir /workspace \
             --env MOCKTAIL_PACKAGE_VERSION="$version" \
             --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
+            --env CCACHE_BASEDIR=/workspace \
             fedora:44 bash -Eeuo pipefail -c '
               dnf install --assumeyes \
                 gcc-c++ cmake git ninja-build pkgconf-pkg-config lld rpm-build \
@@ -514,8 +519,15 @@ jobs:
               cpack --config build-rpm/CPackConfig.cmake \
                 -G RPM -B dist/rpm
               rpm --query --package --info dist/rpm/*.rpm >/dev/null
+              ccache --show-stats | tail -5
             '
           sudo chown -R "$(id -u):$(id -g)" .ccache dist
+
+      - name: Save ccache
+        uses: ./.github/actions/ccache
+        with:
+          scope: ccache-rpm-${{ matrix.arch }}
+          mode: save
 
       - name: Upload RPM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

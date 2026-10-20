@@ -19,6 +19,8 @@ readonly AUR_PUBLISH_WORKFLOW="${ROOT}/.github/workflows/aur-publish.yml"
 readonly WORKFLOW="${ROOT}/.github/workflows/packages.yml"
 readonly RELEASE_WORKFLOW="${ROOT}/.github/workflows/release.yml"
 readonly BUILD_WORKFLOW="${ROOT}/.github/workflows/build-packages.yml"
+readonly CI_WORKFLOW="${ROOT}/.github/workflows/ci.yml"
+readonly CCACHE_ACTION="${ROOT}/.github/actions/ccache/action.yml"
 readonly README="${ROOT}/README.md"
 readonly STUB_CMAKE="${ROOT}/stubs/CMakeLists.txt"
 readonly ANDROID_STUB="${ROOT}/stubs/libandroid_stub.cc"
@@ -149,6 +151,30 @@ grep -Fq 'MOCKTAIL_MINIZIP_HAS_STREAM_TELL' "${STUB_CMAKE}" ||
 grep -Fq 'mz_stream_tell(unzGetStream(archive))' "${ANDROID_STUB}" ||
   Fail 'Android assets do not support the minizip-ng offset API'
 
+test -f "${CCACHE_ACTION}" ||
+  Fail 'the ccache action is missing'
+for expected in \
+    'actions/cache/restore' \
+    'actions/cache/save'; do
+  grep -Fq -- "${expected}" "${CCACHE_ACTION}" ||
+    Fail "the ccache action is missing: ${expected}"
+done
+for workflow in "${CI_WORKFLOW}" "${BUILD_WORKFLOW}"; do
+  for expected in \
+      'uses: ./.github/actions/ccache' \
+      'mode: restore' \
+      'mode: save'; do
+    grep -Fq -- "${expected}" "${workflow}" ||
+      Fail "workflow does not share the ccache: ${workflow}: ${expected}"
+  done
+done
+# The build workflow is reusable, so the permission that lets the ccache
+# action drop the older caches comes from the workflow that calls it.
+for workflow in "${CI_WORKFLOW}" "${WORKFLOW}" "${RELEASE_WORKFLOW}"; do
+  grep -Fq -- 'actions: write' "${workflow}" ||
+    Fail "workflow cannot drop the older caches: ${workflow}"
+done
+
 # The builds live in build-packages.yml, shared by the nightly and the tagged
 # release. Every container has to install the Rust toolchain the texture
 # kernels need, and the nightly adds the portable tarball and the aarch64
@@ -234,6 +260,12 @@ for unexpected in \
     Fail "nightly workflow should not contain: ${unexpected}"
   fi
 done
+
+if grep -Fq -- 'push:' "${CI_WORKFLOW}"; then
+  Fail 'the CI workflow should not run on a push'
+fi
+grep -Fq -- 'pull_request:' "${CI_WORKFLOW}" ||
+  Fail 'the CI workflow does not run for a pull request'
 
 for expected in \
     'uses: ./.github/workflows/build-packages.yml' \

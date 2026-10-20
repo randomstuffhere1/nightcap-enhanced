@@ -63,6 +63,11 @@ jobs:
     uses: ./.github/workflows/build-packages.yml
     with:
       channel: nightly
+    permissions:
+      contents: read
+      # The ccache action drops the older caches of its scope, which needs
+      # the Actions permission.
+      actions: write
 
   publish:
     name: Publish nightly release
