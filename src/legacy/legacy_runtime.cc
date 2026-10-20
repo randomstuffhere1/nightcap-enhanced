@@ -67,6 +67,7 @@
 #include "runtime/display_size.h"
 #include "runtime/environment.h"
 #include "runtime/discord_rpc.h"
+#include "runtime/server_info_overlay.h"
 #include "runtime/luau_codegen_switch.h"
 #include "runtime/jnivm_platform_web_callbacks.h"
 #include "runtime/pump_stall_diagnostics.h"
@@ -82,6 +83,7 @@
 #include "runtime/roblox_experience_composition.h"
 #include "runtime/roblox_private_server_paste.h"
 #include "runtime/roblox_game_session_native_adapter.h"
+#include "runtime/roblox_mouse_behavior_query.h"
 #include "runtime/roblox_window_input_runtime.h"
 #include "runtime/roblox_text_input_jni_bridge.h"
 #include "runtime/runtime_config.h"
@@ -4922,6 +4924,11 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
                 << "; continuing without Rich Presence\n";
     }
   }
+  mocktail::runtime::ServerInfoOverlay server_info(
+      runtime_config.overlay(), CurrentRuntimePaths().config_file());
+  if (!runtime_config.headless()) {
+    server_info.Start();
+  }
   mocktail::runtime::LuauCodegenMenuSwitch luau_codegen_switch(
       [&process_environment]() -> std::uint8_t* {
         if (process_environment.GetOr("MOCKTAIL_LUAU_CODEGEN_MENU_SWITCH",
@@ -5983,6 +5990,12 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
       "setsockopt", reinterpret_cast<void*>(mocktail_bionic_setsockopt));
   linker::RegisterSymbol("sendmsg",
                          reinterpret_cast<void*>(mocktail_bionic_sendmsg));
+  linker::RegisterSymbol("sendto",
+                         reinterpret_cast<void*>(mocktail_bionic_sendto));
+  linker::RegisterSymbol("__sendto_chk",
+                         reinterpret_cast<void*>(mocktail_bionic_sendto_chk));
+  linker::RegisterSymbol("recvfrom",
+                         reinterpret_cast<void*>(mocktail_bionic_recvfrom));
   linker::RegisterSymbol("mprotect", reinterpret_cast<void*>(mocktail_mprotect));
   linker::RegisterSymbol("pthread_condattr_init",
                          reinterpret_cast<void*>(mocktail_pthread_condattr_init));
@@ -7384,9 +7397,19 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
         paste_interceptor = {private_server_paste_target.get(),
                              &InterceptPrivateServerPaste};
       }
+      mocktail::runtime::RobloxInputSymbols input_symbols =
+          roblox_capabilities.input;
+      input_symbols.mouse_lock_compare =
+          mocktail::runtime::PrepareLockCenterCompare(reinterpret_cast<void*>(
+              input_symbols.get_main_window_is_mouse_locked_center));
+      std::cerr << (input_symbols.mouse_lock_compare != nullptr
+                        ? "  [input] right drag follows Roblox's camera pan\n"
+                        : "  [input] right drag captures on every press: "
+                          "Roblox's pan state is unreadable\n")
+                << std::flush;
       window_input_runtime =
           std::make_shared<mocktail::runtime::RobloxWindowInputRuntime>(
-              input_environment, roblox_capabilities.input, paste_interceptor);
+              input_environment, input_symbols, paste_interceptor);
       window_input_runtime->SetRawMouseEnabled(input_capabilities.raw_mouse);
       const mocktail::Status input_status = window_input_runtime->Initialize();
       if (!input_status.ok()) {

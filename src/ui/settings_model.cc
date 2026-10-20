@@ -10,6 +10,7 @@
 
 #include "runtime/device_profile.h"
 #include "runtime/frame_rate_policy.h"
+#include "runtime/runtime_config.h"
 #include "runtime/runtime_config_bootstrap.h"
 #include "runtime/runtime_config_editor.h"
 #include "runtime/runtime_config_store.h"
@@ -18,6 +19,11 @@
 namespace mocktail {
 namespace ui {
 namespace {
+
+Setting Live(Setting setting) {
+  setting.live = true;
+  return setting;
+}
 
 // The touch switch. The file holds it inside the device block, which the
 // loader does not let input.touch_enabled be combined with.
@@ -35,6 +41,9 @@ constexpr std::string_view kPlayabilityKey =
 constexpr std::string_view kProxyKey = "network.proxy";
 constexpr std::string_view kProxyHostKey = "network.proxy_host";
 constexpr std::string_view kProxyPortKey = "network.proxy_port";
+constexpr std::string_view kProxySchemeKey = "network.proxy_scheme";
+constexpr std::string_view kProxyUsernameKey = "network.proxy_username";
+constexpr std::string_view kProxyPasswordKey = "network.proxy_password";
 
 runtime::RuntimeConfigValue Get(std::string_view text, std::string_view key) {
   return runtime::GetRuntimeConfigValue(text, key);
@@ -221,10 +230,15 @@ std::string ProxyValue(const Reader& file) {
 runtime::RuntimeConfigEdit SetProxy(std::string_view text,
                                     std::string_view value) {
   if (value.empty()) {
-    return Then(UnsetIfSet(text, kProxyHostKey),
-                [](std::string_view current) {
-                  return UnsetIfSet(current, kProxyPortKey);
-                });
+    runtime::RuntimeConfigEdit edit = Unchanged(text);
+    for (const std::string_view dropped :
+         {kProxyHostKey, kProxyPortKey, kProxySchemeKey, kProxyUsernameKey,
+          kProxyPasswordKey}) {
+      edit = Then(std::move(edit), [dropped](std::string_view current) {
+        return UnsetIfSet(current, dropped);
+      });
+    }
+    return edit;
   }
   const std::size_t colon = value.rfind(':');
   if (colon == std::string_view::npos || colon == 0 ||
@@ -236,6 +250,24 @@ runtime::RuntimeConfigEdit SetProxy(std::string_view text,
               [value, colon](std::string_view current) {
                 return runtime::SetRuntimeConfigString(
                     current, kProxyPortKey, value.substr(colon + 1));
+              });
+}
+
+runtime::RuntimeConfigEdit SetProxyLogin(std::string_view text,
+                                         std::string_view username) {
+  if (username.empty()) {
+    return Then(UnsetIfSet(text, kProxyUsernameKey),
+                [](std::string_view current) {
+                  return UnsetIfSet(current, kProxyPasswordKey);
+                });
+  }
+  return Then(runtime::SetRuntimeConfigString(text, kProxyUsernameKey,
+                                              username),
+              [](std::string_view current) {
+                return Get(current, kProxyPasswordKey).found
+                           ? Unchanged(current)
+                           : runtime::SetRuntimeConfigString(
+                                 current, kProxyPasswordKey, "");
               });
 }
 
@@ -534,6 +566,56 @@ const std::vector<SettingsPage>& SettingsPages() {
                  "roblox",
                  {}},
             }},
+           {"Server location",
+            {
+                Live({"overlay.location",
+                      "Show after joining",
+                      "A popup at the top center.",
+                      SettingKind::kToggle,
+                      {},
+                      "false",
+                      {}}),
+                Live({"overlay.location_offset",
+                      "Distance from top",
+                      "In pixels. 12 lines it up with the top bar.",
+                      SettingKind::kNumber,
+                      {},
+                      "12",
+                      {},
+                      0,
+                      runtime::kMaximumOverlayLocationOffset,
+                      1}),
+            }},
+           {"Performance overlay",
+            {
+                Live({"overlay.fps",
+                      "Frame rate",
+                      "",
+                      SettingKind::kToggle,
+                      {},
+                      "false",
+                      {}}),
+                Live({"overlay.ping",
+                      "Ping",
+                      "",
+                      SettingKind::kToggle,
+                      {},
+                      "false",
+                      {}}),
+                Live({"overlay.position",
+                      "Position",
+                      "",
+                      SettingKind::kChoice,
+                      {
+                          {"top_center", "Top center"},
+                          {"top_right", "Top right"},
+                          {"bottom_left", "Bottom left"},
+                          {"bottom_center", "Bottom center"},
+                          {"bottom_right", "Bottom right"},
+                      },
+                      "bottom_left",
+                      {}}),
+            }},
            {"Window",
             {
                 {"window.width", "Width",
@@ -761,6 +843,19 @@ const std::vector<SettingsPage>& SettingsPages() {
                  {}},
                 {kProxyKey, "Fixed proxy (host:port)", "", SettingKind::kText,
                  {}, "", {}},
+                {kProxySchemeKey,
+                 "Proxy type",
+                 "",
+                 SettingKind::kChoice,
+                 {{"http", "HTTP"}, {"socks5", "SOCKS5"}},
+                 "http",
+                 {{"https", "http"}, {"socks", "socks5"}, {"socks5h", "socks5"}}},
+                {kProxyUsernameKey, "Proxy username",
+                 "Leave empty if the proxy has no login.", SettingKind::kText,
+                 {}, "", {}},
+                {kProxyPasswordKey, "Proxy password",
+                 "Saved as plain text in config.yaml.",
+                 SettingKind::kPassword, {}, "", {}},
             }},
            {"Certificates",
             {
@@ -886,6 +981,10 @@ const std::vector<SettingsPage>& SettingsPages() {
                  SettingKind::kNumber, {}, "58443", {}, 1, 65535, 1},
                 {"integrations.fleasion.ca_certificate", "CA certificate",
                  "", SettingKind::kFile, {}, "", {}},
+                {"integrations.fleasion.clear_cache_on_launch",
+                 "Clear Roblox cache on launch",
+                 "Loads new replacements. Roblox downloads assets again.",
+                 SettingKind::kToggle, {}, "false", {}},
             },
             "Use Fleasion",
             "Trust Fleasion's certificate without editing Roblox files.",
@@ -998,6 +1097,13 @@ const std::vector<SettingsPage>& SettingsPages() {
             "Nightcap downloads."},
            {"Files",
             {
+                {"roblox_cache",
+                 "Clear Roblox cache",
+                 "Downloaded game assets. Settings and sign-in are kept.",
+                 SettingKind::kCache,
+                 {},
+                 "",
+                 {}},
                 {"config_folder",
                  "Open config folder",
                  "Where config.yaml and fflags.json are kept.",
@@ -1163,6 +1269,13 @@ std::string SettingsDocument::Value(std::string_view key) const {
   if (key == kProxyKey) {
     return ProxyValue(file);
   }
+  if (key == "overlay.location" && !file.Get(key).found) {
+    const auto legacy = file.Get("overlay.server_info");
+    if (legacy.found) {
+      return legacy.value == "notice" || legacy.value == "always" ? "true"
+                                                                  : "false";
+    }
+  }
   return file.Get(key).value;
 }
 
@@ -1210,6 +1323,20 @@ bool SettingsDocument::IsActive(std::string_view key) const {
       IsSwitchedOn("network.use_system_proxy")) {
     return false;
   }
+  if ((key == kProxySchemeKey || key == kProxyUsernameKey) &&
+      !IsSet(kProxyKey)) {
+    return false;
+  }
+  if (key == kProxyPasswordKey && Value(kProxyUsernameKey).empty()) {
+    return false;
+  }
+  if (key == "overlay.location_offset" && !IsSwitchedOn("overlay.location")) {
+    return false;
+  }
+  if (key == "overlay.position" && !IsSwitchedOn("overlay.fps") &&
+      !IsSwitchedOn("overlay.ping")) {
+    return false;
+  }
   if (key == "integrations.fleasion.proxy_port" &&
       Value("integrations.fleasion.proxy_mode") == "hosts") {
     return false;
@@ -1249,10 +1376,12 @@ bool SettingsDocument::IsChanged(const Setting& setting) const {
       return std::strtod(value.c_str(), nullptr) !=
              std::strtod(fallback.c_str(), nullptr);
     case SettingKind::kText:
+    case SettingKind::kPassword:
     case SettingKind::kFile:
       return value != fallback;
     case SettingKind::kEditor:
     case SettingKind::kFolder:
+    case SettingKind::kCache:
       return false;
   }
   return false;
@@ -1291,6 +1420,12 @@ runtime::RuntimeConfigEdit SettingsDocument::Edit(std::string_view key,
   }
   if (key == kProxyKey) {
     return SetProxy(text, value);
+  }
+  if (key == kProxyUsernameKey) {
+    return SetProxyLogin(text, value);
+  }
+  if (key == kProxyPasswordKey) {
+    return runtime::SetRuntimeConfigString(text, key, value);
   }
   if (value.empty() && empty_unsets) {
     return runtime::UnsetRuntimeConfigValue(text, key);

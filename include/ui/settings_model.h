@@ -26,6 +26,7 @@ enum class SettingKind {
   kFrameRate,
   kNumber,
   kText,
+  kPassword,
   // A text row that holds an absolute file path, with a file picker.
   kFile,
   // A drop-down of the setting's choices and the audio devices found.
@@ -34,6 +35,7 @@ enum class SettingKind {
   kEditor,
   // A row that opens the folder config.yaml is in.
   kFolder,
+  kCache,
 };
 
 struct SettingChoice {
@@ -58,6 +60,7 @@ struct Setting {
   double step = 256;
   // What a kNumber row shows in place of 0, when 0 turns the setting off.
   std::string_view zero_label = {};
+  bool live = false;
 };
 
 struct SettingsGroup {

@@ -29,8 +29,9 @@ SystemProxyResult SelectSystemProxy(
 // HTTP/HTTPS resolver results and SOCKS5 proxy endpoints are supported.
 SystemProxyResult ResolveSystemProxy();
 
-// Applies MOCKTAIL_HTTP_PROXY_HOST / _PORT / _SCHEME to a libcurl easy handle,
-// and leaves the handle untouched when the environment does not configure one.
+// Applies MOCKTAIL_HTTP_PROXY_HOST / _PORT / _SCHEME, and the optional
+// _USERNAME / _PASSWORD login, to a libcurl easy handle, and leaves the handle
+// untouched when the environment does not configure one.
 //
 // This block was copied into every HTTP call site by hand and the copies
 // drifted: server_location built "http://host:port" without consulting the

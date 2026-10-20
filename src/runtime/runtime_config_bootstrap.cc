@@ -148,6 +148,21 @@ input:
   # cursor is still drawn by Roblox.
   hardware_cursor: false
 
+overlay:
+  # Boolean (default: false): show the game server's location for a few
+  # seconds after each join, at the top center. Looks the server up at
+  # ipinfo.io only while this is on.
+  location: false
+  # Integer (default: 12, 0-200): the location popup's distance from the top,
+  # in pixels. 12 lines it up with Roblox's top bar.
+  location_offset: 12
+  # Booleans (default: false): keep the frame rate and ping on screen in game.
+  fps: false
+  ping: false
+  # String (default: bottom_left): where the frame rate and ping go:
+  # top_center, top_right, bottom_left, bottom_center, or bottom_right.
+  position: bottom_left
+
 integrations:
   # Boolean (default: false): after you join, look up which region the game
   # server is in and print it in the session log. Roblox's own server info is
@@ -161,6 +176,9 @@ integrations:
     proxy_mode: env
     # Integer: Fleasion's local HTTP proxy port in env mode.
     proxy_port: 58443
+    # Boolean (default: false): clear Roblox's downloaded game assets at each
+    # launch so Fleasion's replacements load. Settings and sign-in are kept.
+    clear_cache_on_launch: false
     # Optional absolute public CA path. Default: $XDG_CONFIG_HOME/Fleasion/proxy_ca/ca.crt
     # or ~/.config/Fleasion/proxy_ca/ca.crt. Never select ca.key.
     # ca_certificate: /home/user/.config/Fleasion/proxy_ca/ca.crt
@@ -219,12 +237,15 @@ network:
   # Boolean (default: false): follow the host HTTP/SOCKS5 proxy and
   # automatically use its current port. Do not combine with a fixed proxy.
   use_system_proxy: false
-  # Optional fixed HTTP proxy. Uncomment both values together. The host must
-  # not contain a scheme such as http://.
+  # Optional fixed HTTP/SOCKS5 proxy. Uncomment host and port together.
+  # The host must not contain a scheme such as http://.
+  # proxy_scheme: http
   # String (optional, default: disabled): proxy host name or IP address.
   # proxy_host: 127.0.0.1
   # Integer (optional, default: disabled): proxy TCP port from 1 to 65535.
   # proxy_port: 8080
+  # proxy_username: "user"
+  # proxy_password: "password"
   # Absolute path (optional): custom PEM CA bundle. Mocktail reads this file
   # directly and does not replace it during Roblox payload updates.
   # ca_bundle: /home/user/.config/mocktail/cacert.pem

@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "net/curl_support.h"
+#include "runtime/https_json.h"
 #include "runtime/owned_pthread.h"
 #include "runtime/system_proxy.h"
 
@@ -35,7 +36,6 @@ namespace {
 using Json = nlohmann::json;
 
 constexpr std::size_t kMaximumDiscordFrameBytes = 1024U * 1024U;
-constexpr std::size_t kMaximumRobloxApiBytes = 512U * 1024U;
 constexpr std::size_t kDiscordWorkerStackBytes = 16U * 1024U * 1024U;
 constexpr std::chrono::milliseconds kReconnectDelay{5000};
 constexpr std::chrono::seconds kDiscordActivityRateWindow{20};
@@ -410,41 +410,6 @@ bool SetDiscordActivity(int descriptor, const DiscordRpcActivity* activity,
   return WriteFrame(descriptor, DiscordOpcode::kFrame, DumpJson(request));
 }
 
-std::optional<Json> GetRobloxJson(std::string url) {
-  const net::EasyHandle curl(true);
-  if (!curl) {
-    return std::nullopt;
-  }
-  std::string response_body;
-  net::BoundedStringSink response{&response_body, kMaximumRobloxApiBytes, false};
-  curl_easy_setopt(curl.get(), CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl.get(), CURLOPT_HTTPGET, 1L);
-  net::TransportOptions options;
-  options.user_agent = "Mocktail/0.1";
-  options.connect_timeout_ms = 2000L;
-  options.timeout_ms = 3500L;
-  // Roblox presence endpoints are fixed, so a redirect is not expected; refusing
-  // one keeps the .ROBLOSECURITY cookie from being handed to another host.
-  options.follow_redirects = false;
-  net::ApplyTransportOptions(curl.get(), options);
-  curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, net::WriteBoundedString);
-  curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &response);
-  ApplyConfiguredProxy(curl.get());
-  const CURLcode status = curl_easy_perform(curl.get());
-  long http_status = 0;
-  if (status == CURLE_OK) {
-    curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &http_status);
-  }
-  if (status != CURLE_OK || http_status != 200 || response.exceeded) {
-    return std::nullopt;
-  }
-  Json parsed = Json::parse(response_body, nullptr, false);
-  if (parsed.is_discarded()) {
-    return std::nullopt;
-  }
-  return parsed;
-}
-
 struct ResolvedPlaceMetadata {
   std::string name;
   std::string creator_name;
@@ -464,7 +429,7 @@ ResolvedPlaceMetadata ResolvePlaceMetadata(int64_t place_id) {
     return metadata;
   }
   const std::optional<Json> universe =
-      GetRobloxJson("https://apis.roblox.com/universes/v1/places/" +
+      GetHttpsJson("https://apis.roblox.com/universes/v1/places/" +
                     std::to_string(place_id) + "/universe");
   if (!universe.has_value() || !universe->contains("universeId")) {
     return metadata;
@@ -487,7 +452,7 @@ ResolvedPlaceMetadata ResolvePlaceMetadata(int64_t place_id) {
     return metadata;
   }
   const std::optional<Json> game =
-      GetRobloxJson("https://games.roblox.com/v1/games?universeIds=" +
+      GetHttpsJson("https://games.roblox.com/v1/games?universeIds=" +
                     std::to_string(universe_id));
   if (game.has_value() && game->contains("data") &&
       (*game)["data"].is_array() && !(*game)["data"].empty()) {
@@ -505,7 +470,7 @@ ResolvedPlaceMetadata ResolvePlaceMetadata(int64_t place_id) {
     }
   }
 
-  const std::optional<Json> thumbnail = GetRobloxJson(
+  const std::optional<Json> thumbnail = GetHttpsJson(
       "https://thumbnails.roblox.com/v1/games/icons?universeIds=" +
       std::to_string(universe_id) +
       "&returnPolicy=PlaceHolder&size=512x512&format=Png&isCircular=false");

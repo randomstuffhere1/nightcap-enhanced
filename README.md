@@ -59,6 +59,10 @@ side by side.
 - **Correct device info.** Roblox sees your real RAM and screen size.
 - **Smoother mouse and a cooler PC.** Optional raw mouse input, and less CPU
   use while idle.
+- **Overlays.** Your frame rate, your ping, and the server's location, drawn
+  over the game.
+- **Discord.** Shows the game you are playing.
+- **A settings window.** Every option in one place.
 - **Better desktop launcher.** Runs on Wayland and always finds the installed
   binary.
 
@@ -84,7 +88,7 @@ the list below and nothing else. In a clone with both remotes,
 - **Where the game server is.** `integrations.server_location_indicator` shows
   the place, region and country in a pill drawn into the frame the game is
   already presenting, so it cannot take a click meant for the game. Off by
-  default.
+  default. Upstream ships its own version of this as `overlay.location`.
 - **Rust texture kernels.** The resampler, the EAC alpha merge and the R11 and
   RG11 decoders live in `rust/` and link into the `libvulkan.so` stub.
   `kernel_parity_test` runs the Rust and C++ kernels over every format, stride
@@ -255,8 +259,9 @@ in.
 
 The window edits `~/.config/mocktail/config.yaml`. It keeps your comments
 and layout, saves each change at once, and does not save a value Nightcap
-could not start with. Changes apply the next time Nightcap starts. If
-Nightcap is open, the window offers to restart it, except in the Flatpak.
+could not start with. The overlay settings apply at once, even in game.
+Other changes apply the next time Nightcap starts. If Nightcap is open, the
+window offers to restart it, except in the Flatpak.
 
 You can also edit the file by hand. Useful options:
 

@@ -129,9 +129,10 @@ blocked, not busy, which is what the item above now says.
 - Settings window, from the app menu or `mocktail --settings`: graphics,
   input, performance, audio, and Discord options, and a text editor for
   `fflags.json`. It edits the same `config.yaml`, keeps your comments, and
-  does not save a value Nightcap could not start with. Changes apply on the
-  next launch. A setting changed from its default gets a reset button, and a
-  running Nightcap is offered a restart with its own options and environment.
+  does not save a value Nightcap could not start with. Overlay changes apply
+  at once; the rest apply on the next launch. A setting changed from its
+  default gets a reset button, and a running Nightcap is offered a restart with
+  its own options and environment.
 - A pipeline cache fallback. The client already persists its own
   `shadercachevk.bin` and hands it to `vkCreatePipelineCache`, so this does
   nothing on a stock client; it only engages if a future client stops seeding

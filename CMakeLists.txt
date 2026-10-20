@@ -9,7 +9,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 project(Mocktail
-  VERSION 0.3.4
+  VERSION 0.4.0
   DESCRIPTION "Android Roblox compatibility runtime for Linux"
   LANGUAGES CXX
 )
@@ -378,12 +378,14 @@ add_library(mocktail_runtime STATIC
   src/runtime/command_line.cc
   src/runtime/crash_report_policy.cc
   src/runtime/discord_rpc.cc
+  src/runtime/https_json.cc
   src/runtime/device_profile.cc
   src/runtime/engine_pump_rest.cc
   src/runtime/environment.cc
   src/runtime/external_launch_broker.cc
   src/runtime/frame_rate_policy.cc
   src/runtime/fleasion.cc
+  src/runtime/roblox_cache.cc
   src/runtime/game_mode.cc
   src/runtime/game_session_coordinator.cc
   src/runtime/graphics_launch_policy.cc
@@ -413,6 +415,7 @@ add_library(mocktail_runtime STATIC
   src/runtime/process_diagnostics.cc
   src/runtime/asset_overlay_names.cc
   src/runtime/roblox_cursor_hook.cc
+  src/runtime/roblox_mouse_behavior_query.cc
   src/runtime/runtime_config.cc
   src/runtime/runtime_config_bootstrap.cc
   src/runtime/runtime_config_editor.cc
@@ -420,6 +423,7 @@ add_library(mocktail_runtime STATIC
   src/runtime/runtime_config_file.cc
   src/runtime/runtime_paths.cc
   src/runtime/running_instance.cc
+  src/runtime/server_info.cc
   src/runtime/session_log.cc
   src/runtime/server_location.cc
   src/runtime/single_instance_lock.cc
@@ -439,6 +443,7 @@ target_include_directories(mocktail_runtime PUBLIC
 )
 target_compile_definitions(mocktail_runtime PRIVATE
   "MOCKTAIL_DISCORD_APPLICATION_ID=\"${MOCKTAIL_DISCORD_APPLICATION_ID}\""
+  "MOCKTAIL_INSTALL_LIBDIR=\"${CMAKE_INSTALL_LIBDIR}\""
 )
 set_property(SOURCE src/runtime/session_log.cc APPEND PROPERTY
   COMPILE_DEFINITIONS
@@ -878,13 +883,17 @@ install(FILES
 # launches from sessions whose PATH lacks the install prefix. Uses the prefix
 # given at install time, not the configure-time one.
 install(CODE "
+  set(MOCKTAIL_DESKTOP_BINDIR \"${CMAKE_INSTALL_BINDIR}\")
+  if(NOT IS_ABSOLUTE \"\${MOCKTAIL_DESKTOP_BINDIR}\")
+    set(MOCKTAIL_DESKTOP_BINDIR \"\${CMAKE_INSTALL_PREFIX}/\${MOCKTAIL_DESKTOP_BINDIR}\")
+  endif()
   file(READ \"${CMAKE_SOURCE_DIR}/packaging/io.github.CoderDayton.nightcap.desktop\"
        MOCKTAIL_DESKTOP_ENTRY)
   string(REPLACE \"Exec=env SDL_VIDEODRIVER=wayland,x11 mocktail %u\"
-         \"Exec=env SDL_VIDEODRIVER=wayland,x11 \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/mocktail %u\"
+         \"Exec=env SDL_VIDEODRIVER=wayland,x11 \${MOCKTAIL_DESKTOP_BINDIR}/mocktail %u\"
          MOCKTAIL_DESKTOP_ENTRY \"\${MOCKTAIL_DESKTOP_ENTRY}\")
   string(REPLACE \"Exec=mocktail --settings\"
-         \"Exec=\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/mocktail --settings\"
+         \"Exec=\${MOCKTAIL_DESKTOP_BINDIR}/mocktail --settings\"
          MOCKTAIL_DESKTOP_ENTRY \"\${MOCKTAIL_DESKTOP_ENTRY}\")
   file(WRITE \"${CMAKE_BINARY_DIR}/io.github.CoderDayton.nightcap.desktop\"
        \"\${MOCKTAIL_DESKTOP_ENTRY}\")

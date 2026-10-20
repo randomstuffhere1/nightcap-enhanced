@@ -56,6 +56,7 @@
 #include "runtime/session_log.h"
 #include "runtime/running_instance.h"
 #include "runtime/settings_launcher.h"
+#include "runtime/roblox_cache.h"
 #include "runtime/single_instance_lock.h"
 #include "runtime/startup_trace.h"
 #include "runtime/support_bundle.h"
@@ -155,7 +156,8 @@ void PromptFirstLaunchSignIn(
       helper = executable.parent_path() / "mocktail_webview_helper";
     }
   }
-  if (helper.empty() || !std::filesystem::exists(helper)) {
+  std::error_code exists_error;
+  if (helper.empty() || !std::filesystem::exists(helper, exists_error)) {
     return;
   }
 
@@ -420,6 +422,35 @@ int main(int argc, char* argv[]) {
       return EXIT_FAILURE;
     }
   }
+  std::optional<mocktail::runtime::SingleInstanceLock> roblox_data_lock;
+  if (command_line.options.mode == mocktail::runtime::CommandMode::kRun) {
+    std::error_code lock_directory_error;
+    std::filesystem::create_directories(paths.android_runtime_root(),
+                                        lock_directory_error);
+    const std::filesystem::path data_lock_path =
+        mocktail::runtime::RobloxDataLockPath(paths);
+    roblox_data_lock.emplace(
+        mocktail::runtime::SingleInstanceLock::Acquire(data_lock_path));
+    if (roblox_data_lock->already_running()) {
+      std::cout << "  [runtime] waiting for the Roblox cache clear to finish\n"
+                << std::flush;
+      roblox_data_lock.reset();
+      roblox_data_lock.emplace(mocktail::runtime::AcquireRobloxDataLock(
+          data_lock_path, std::chrono::seconds(30)));
+    }
+    if (!roblox_data_lock->acquired()) {
+      std::cerr << "[FATAL] Roblox data is in use"
+                << (roblox_data_lock->already_running()
+                        ? std::string(" by another Nightcap or a cache clear")
+                        : ": " + roblox_data_lock->error())
+                << '\n';
+      (void)mocktail::runtime::ShowFailureDialog(
+          environment,
+          "Nightcap could not start because another Nightcap is using its "
+          "Roblox data, or its cache is being cleared.");
+      return EXIT_FAILURE;
+    }
+  }
   const mocktail::runtime::RuntimeConfigBootstrapResult config_bootstrap =
       mocktail::runtime::EnsureRuntimeConfigFile(paths.config_file());
   if (!config_bootstrap) {
@@ -458,7 +489,9 @@ int main(int argc, char* argv[]) {
     if (!system_proxy ||
         setenv("MOCKTAIL_HTTP_PROXY_HOST", proxy_host.c_str(), 1) != 0 ||
         setenv("MOCKTAIL_HTTP_PROXY_PORT", proxy_port.c_str(), 1) != 0 ||
-        setenv("MOCKTAIL_HTTP_PROXY_SCHEME", proxy_scheme.c_str(), 1) != 0) {
+        setenv("MOCKTAIL_HTTP_PROXY_SCHEME", proxy_scheme.c_str(), 1) != 0 ||
+        setenv("MOCKTAIL_HTTP_PROXY_USERNAME", "", 1) != 0 ||
+        setenv("MOCKTAIL_HTTP_PROXY_PASSWORD", "", 1) != 0) {
       std::cerr << "[FATAL] Cannot resolve host system proxy";
       if (!system_proxy.error.empty()) {
         std::cerr << ": " << system_proxy.error;
@@ -557,6 +590,23 @@ int main(int argc, char* argv[]) {
       std::cout << "  [fleasion] proxy=" << mocktail::runtime::BuildNetworkProxyUrl(
           *runtime_config.config.network_proxy()) << "; start Fleasion before Roblox\n";
     }
+    if (command_line.options.mode == mocktail::runtime::CommandMode::kRun &&
+        runtime_config.config.fleasion_clear_cache_on_launch()) {
+      const mocktail::runtime::RobloxCacheClear cleared =
+          mocktail::runtime::ClearRobloxCache(paths.android_data_root());
+      if (cleared) {
+        std::cout << "  [fleasion] cleared Roblox cache: " << cleared.bytes
+                  << " bytes\n";
+      } else {
+        std::cerr << "  [fleasion] cannot clear Roblox cache: " << cleared.error
+                  << '\n';
+      }
+    }
+  }
+  if (!mocktail::runtime::ExportNetworkProxyEnvironment(
+          runtime_config.config, &command_line_error)) {
+    std::cerr << "[FATAL] " << command_line_error << '\n';
+    return EXIT_FAILURE;
   }
   if (config_bootstrap.created()) {
     std::cout << "  [runtime] created first-run configuration: "

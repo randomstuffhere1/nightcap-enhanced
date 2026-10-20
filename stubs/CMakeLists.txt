@@ -110,6 +110,7 @@ add_library(stub_vulkan SHARED
   ${CMAKE_SOURCE_DIR}/src/graphics/vulkan_text_overlay_compositor.cc
   ${CMAKE_SOURCE_DIR}/src/graphics/vulkan_etc2_emulation.cc
   ${CMAKE_SOURCE_DIR}/src/graphics/vulkan_pipeline_cache.cc
+  ${CMAKE_SOURCE_DIR}/src/graphics/vulkan_driver_pin.cc
   ${CMAKE_SOURCE_DIR}/src/graphics/etc2_decoder.cc
   ${CMAKE_SOURCE_DIR}/src/graphics/mocktail_rs_bridge.cc
   ${CMAKE_SOURCE_DIR}/src/graphics/texture_override.cc

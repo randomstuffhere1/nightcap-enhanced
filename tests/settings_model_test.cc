@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -141,11 +142,15 @@ TEST_F(SettingsModelTest, EveryConfigKeyHasARow) {
            "performance.gamemode", "audio.output_device", "audio.input_device",
            "window.width", "window.height", "window.title", "window.high_dpi",
            "input.raw_mouse", "input.system_cursor", "input.hardware_cursor",
-           "network.use_system_proxy",
+           "overlay.location", "overlay.location_offset", "overlay.fps",
+           "overlay.ping", "overlay.position",
+           "network.use_system_proxy", "network.proxy_scheme",
+           "network.proxy_username", "network.proxy_password",
            "network.ca_bundle",
            "integrations.fleasion.enabled", "integrations.fleasion.proxy_mode",
            "integrations.fleasion.proxy_port",
            "integrations.fleasion.ca_certificate",
+           "integrations.fleasion.clear_cache_on_launch",
            "integrations.discord_rpc.enabled",
            "integrations.discord_rpc.show_place_name",
            "integrations.discord_rpc.show_elapsed_time",
@@ -190,6 +195,19 @@ TEST_F(SettingsModelTest, TheAdvancedPageOpensTheConfigFolder) {
   EXPECT_EQ(&advanced.groups.back().settings.back(), &folder);
 }
 
+TEST_F(SettingsModelTest, TheAdvancedPageClearsTheRobloxCache) {
+  const SettingsPage& advanced = SettingsPages().back();
+  const Setting& cache = Find("roblox_cache");
+  EXPECT_EQ(cache.kind, SettingKind::kCache);
+  bool on_advanced = false;
+  for (const SettingsGroup& group : advanced.groups) {
+    for (const Setting& setting : group.settings) {
+      on_advanced = on_advanced || &setting == &cache;
+    }
+  }
+  EXPECT_TRUE(on_advanced);
+}
+
 TEST_F(SettingsModelTest, AutomaticUpdatesIsASwitchThatIsOnUntilTurnedOff) {
   const Setting& updates = Find("updates.automatic");
   EXPECT_EQ(updates.kind, SettingKind::kToggle);
@@ -216,6 +234,11 @@ TEST_F(SettingsModelTest, AutomaticUpdatesIsASwitchThatIsOnUntilTurnedOff) {
   }
 }
 
+bool NeedsFixedProxy(std::string_view key) {
+  return key == "network.proxy_scheme" || key == "network.proxy_username" ||
+         key == "network.proxy_password";
+}
+
 TEST_F(SettingsModelTest, EveryValueTheWindowOffersSavesAndLoads) {
   SettingsDocument document(file_);
   std::string error;
@@ -224,7 +247,8 @@ TEST_F(SettingsModelTest, EveryValueTheWindowOffersSavesAndLoads) {
   for (const SettingsPage& page : SettingsPages()) {
     for (const SettingsGroup& group : page.groups) {
       for (const Setting& setting : group.settings) {
-        if (setting.kind == SettingKind::kEditor) {
+        if (setting.kind == SettingKind::kEditor ||
+            NeedsFixedProxy(setting.key)) {
           continue;
         }
         if (setting.kind == SettingKind::kText ||
@@ -250,7 +274,8 @@ TEST_F(SettingsModelTest, EveryValueTheWindowOffersSavesAndLoads) {
         // Nightcap loads.
         std::vector<std::string> values;
         if (setting.kind == SettingKind::kNumber) {
-          values = {NumberValue(4096), std::string(setting.default_value)};
+          values = {NumberValue(std::min(4096.0, setting.maximum)),
+                    std::string(setting.default_value)};
         } else if (setting.kind == SettingKind::kToggle) {
           const bool on = setting.default_value == "true";
           values = {on ? "false" : "true", on ? "true" : "false"};
@@ -953,6 +978,160 @@ TEST_F(SettingsModelTest, TheFixedProxyIsOneHostAndPortRow) {
   EXPECT_FALSE(loaded.config.network_proxy().has_value());
 }
 
+TEST_F(SettingsModelTest, LocationAndPerformanceOverlayAreSeparateGroups) {
+  const SettingsGroup* location = nullptr;
+  const SettingsGroup* performance = nullptr;
+  for (const SettingsPage& page : SettingsPages()) {
+    for (const SettingsGroup& group : page.groups) {
+      for (const Setting& setting : group.settings) {
+        if (setting.key == "overlay.location") {
+          location = &group;
+        }
+        if (setting.key == "overlay.position") {
+          performance = &group;
+        }
+      }
+    }
+  }
+  ASSERT_NE(location, nullptr);
+  ASSERT_NE(performance, nullptr);
+  EXPECT_EQ(location->title, "Server location");
+  ASSERT_EQ(location->settings.size(), 2U);
+  EXPECT_EQ(location->settings[0].key, "overlay.location");
+  EXPECT_EQ(location->settings[1].key, "overlay.location_offset");
+  EXPECT_EQ(performance->title, "Performance overlay");
+  ASSERT_EQ(performance->settings.size(), 3U);
+  EXPECT_EQ(performance->settings[0].key, "overlay.fps");
+  EXPECT_EQ(performance->settings[1].key, "overlay.ping");
+  EXPECT_EQ(performance->settings[2].key, "overlay.position");
+}
+
+TEST_F(SettingsModelTest, OnlyOverlaySettingsApplyWithoutARestart) {
+  std::set<std::string_view> live;
+  for (const SettingsPage& page : SettingsPages()) {
+    for (const SettingsGroup& group : page.groups) {
+      for (const Setting& setting : group.settings) {
+        if (setting.live) {
+          live.insert(setting.key);
+        }
+      }
+    }
+  }
+  EXPECT_EQ(live, (std::set<std::string_view>{
+                      "overlay.location", "overlay.location_offset",
+                      "overlay.fps", "overlay.ping", "overlay.position"}));
+}
+
+TEST_F(SettingsModelTest, LocationSwitchReadsTheOldServerInfoKey) {
+  std::string error;
+  Write("version: 1\noverlay:\n  server_info: notice\n");
+  SettingsDocument on(file_);
+  ASSERT_TRUE(on.Load(&error)) << error;
+  EXPECT_EQ(on.Value("overlay.location"), "true");
+
+  Write("version: 1\noverlay:\n  server_info: off\n");
+  SettingsDocument off(file_);
+  ASSERT_TRUE(off.Load(&error)) << error;
+  EXPECT_EQ(off.Value("overlay.location"), "false");
+
+  Write("version: 1\noverlay:\n  server_info: always\n  location: false\n");
+  SettingsDocument both(file_);
+  ASSERT_TRUE(both.Load(&error)) << error;
+  EXPECT_EQ(both.Value("overlay.location"), "false");
+
+  ASSERT_TRUE(both.Set("overlay.location", "true", &error)) << error;
+  EXPECT_EQ(both.Value("overlay.location"), "true");
+}
+
+TEST_F(SettingsModelTest, OverlayPositionNeedsAStatShown) {
+  EXPECT_EQ(Find("overlay.location").kind, SettingKind::kToggle);
+  EXPECT_EQ(Find("overlay.fps").kind, SettingKind::kToggle);
+  EXPECT_EQ(Find("overlay.ping").kind, SettingKind::kToggle);
+  EXPECT_EQ(Find("overlay.position").kind, SettingKind::kChoice);
+  SettingsDocument document(file_);
+  std::string error;
+  ASSERT_TRUE(document.Load(&error)) << error;
+  EXPECT_EQ(document.Value("overlay.location"), "false");
+  EXPECT_EQ(document.Value("overlay.position"), "bottom_left");
+  EXPECT_FALSE(document.Set("overlay.position", "top_left", &error));
+  EXPECT_FALSE(document.IsActive("overlay.position"));
+  EXPECT_EQ(Find("overlay.location_offset").kind, SettingKind::kNumber);
+  EXPECT_EQ(document.Value("overlay.location_offset"), "12");
+  EXPECT_FALSE(document.IsActive("overlay.location_offset"));
+
+  ASSERT_TRUE(document.Set("overlay.location", "true", &error)) << error;
+  EXPECT_TRUE(document.IsActive("overlay.location_offset"));
+  EXPECT_FALSE(document.IsActive("overlay.position"));
+  ASSERT_TRUE(document.Set("overlay.ping", "true", &error)) << error;
+  EXPECT_TRUE(document.IsActive("overlay.position"));
+  ASSERT_TRUE(document.Set("overlay.ping", "false", &error)) << error;
+  ASSERT_TRUE(document.Set("overlay.fps", "true", &error)) << error;
+  EXPECT_TRUE(document.IsActive("overlay.position"));
+
+  ASSERT_TRUE(document.Set("overlay.position", "bottom_right", &error))
+      << error;
+  runtime::RuntimeConfigLoadResult loaded = LoadFile();
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_TRUE(loaded.config.overlay().location);
+  EXPECT_TRUE(loaded.config.overlay().fps);
+  EXPECT_FALSE(loaded.config.overlay().ping);
+  EXPECT_EQ(loaded.config.overlay().position,
+            runtime::OverlayPosition::kBottomRight);
+}
+
+TEST_F(SettingsModelTest, ProxyTypeAndLoginNeedAFixedProxy) {
+  EXPECT_EQ(Find("network.proxy_scheme").kind, SettingKind::kChoice);
+  EXPECT_EQ(Find("network.proxy_username").kind, SettingKind::kText);
+  EXPECT_EQ(Find("network.proxy_password").kind, SettingKind::kPassword);
+  SettingsDocument document(file_);
+  std::string error;
+  ASSERT_TRUE(document.Load(&error)) << error;
+  for (const std::string_view key :
+       {"network.proxy_scheme", "network.proxy_username",
+        "network.proxy_password"}) {
+    EXPECT_FALSE(document.IsActive(key)) << key;
+  }
+
+  ASSERT_TRUE(document.SetText("network.proxy", "proxy.lan:1080", &error))
+      << error;
+  EXPECT_TRUE(document.IsActive("network.proxy_scheme"));
+  EXPECT_TRUE(document.IsActive("network.proxy_username"));
+  EXPECT_FALSE(document.IsActive("network.proxy_password"));
+
+  ASSERT_TRUE(document.Set("network.proxy_scheme", "socks5", &error)) << error;
+  ASSERT_TRUE(document.SetText("network.proxy_username", "me", &error))
+      << error;
+  EXPECT_TRUE(document.IsActive("network.proxy_password"));
+  runtime::RuntimeConfigLoadResult loaded = LoadFile();
+  ASSERT_TRUE(loaded) << loaded.error;
+  ASSERT_TRUE(loaded.config.network_proxy().has_value());
+  EXPECT_EQ(loaded.config.network_proxy()->scheme, "socks5h");
+  EXPECT_EQ(loaded.config.network_proxy()->username, "me");
+  EXPECT_EQ(loaded.config.network_proxy()->password, "");
+
+  ASSERT_TRUE(document.SetText("network.proxy_password", "p@ss word", &error))
+      << error;
+  ASSERT_TRUE(document.SetText("network.proxy_password", "", &error)) << error;
+  ASSERT_TRUE(document.SetText("network.proxy_password", "p@ss word", &error))
+      << error;
+  loaded = LoadFile();
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_EQ(loaded.config.network_proxy()->password, "p@ss word");
+
+  ASSERT_TRUE(document.Set("network.proxy_username", "", &error)) << error;
+  EXPECT_FALSE(document.IsSet("network.proxy_password"));
+  ASSERT_TRUE(document.Set("network.proxy_username", "me", &error)) << error;
+  ASSERT_TRUE(document.Set("network.proxy", "", &error)) << error;
+  for (const std::string_view key :
+       {"network.proxy_scheme", "network.proxy_username",
+        "network.proxy_password"}) {
+    EXPECT_FALSE(document.IsSet(key)) << key;
+  }
+  loaded = LoadFile();
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_FALSE(loaded.config.network_proxy().has_value());
+}
+
 TEST_F(SettingsModelTest, NumberRowsKeepToTheRangeTheLoaderAccepts) {
   EXPECT_EQ(Find("window.width").minimum, 1);
   EXPECT_EQ(Find("window.height").minimum, 1);
@@ -1022,6 +1201,7 @@ std::optional<std::string> ChangedSample(const Setting& setting) {
       return TextSample(setting.key);
     case SettingKind::kEditor:
     case SettingKind::kFolder:
+    case SettingKind::kCache:
       return std::nullopt;
   }
   return std::nullopt;
@@ -1061,7 +1241,7 @@ TEST_F(SettingsModelTest, AChangedRowIsTheOnlyOneAndResetPutsItBack) {
     for (const SettingsGroup& group : page.groups) {
       for (const Setting& setting : group.settings) {
         const std::optional<std::string> value = ChangedSample(setting);
-        if (!value.has_value()) {
+        if (!value.has_value() || NeedsFixedProxy(setting.key)) {
           continue;
         }
         SCOPED_TRACE(std::string(setting.key) + " = " + *value);
@@ -1200,6 +1380,19 @@ TEST_F(SettingsModelTest, HostsRoutingLeavesTheFleasionPortInactive) {
       << error;
   EXPECT_FALSE(document.IsActive("integrations.fleasion.proxy_port"));
   EXPECT_TRUE(document.IsActive("integrations.fleasion.ca_certificate"));
+}
+
+TEST_F(SettingsModelTest, ClearingOnLaunchNeedsFleasion) {
+  Write("integrations:\n  fleasion:\n    enabled: false\n");
+  SettingsDocument document(file_);
+  std::string error;
+  ASSERT_TRUE(document.Load(&error)) << error;
+  EXPECT_FALSE(
+      document.IsActive("integrations.fleasion.clear_cache_on_launch"));
+  ASSERT_TRUE(document.Set("integrations.fleasion.enabled", "true", &error))
+      << error;
+  EXPECT_TRUE(
+      document.IsActive("integrations.fleasion.clear_cache_on_launch"));
 }
 
 TEST(SettingsPagesTest, TextGroupsExplainTheirPlaceholders) {

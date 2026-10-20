@@ -53,6 +53,16 @@ Release notes on GitHub are taken from the matching section here.
   `[JNI] no handler for <class>.<method><signature>`. This shows what a new Roblox version needs.
 - `--profile` traces now show how much GPU memory decoded ETC2 textures take, as the `emulated texture (MB)`
   and `compressed texture (MB)` counters. `scripts/summarize_profile_trace.py` prints the peak of each.
+- An optional popup shows the game server's location for a few seconds after each join (`overlay.location`),
+  and `overlay.location_offset` moves it down. A separate performance overlay keeps your frame rate
+  (`overlay.fps`) and ping (`overlay.ping`) on screen, and `overlay.position` moves it to a corner or edge.
+  All are in the settings window under Graphics, and changes apply while you play, without a restart.
+- Advanced settings can clear Roblox's downloaded game assets, and show how much space they use. Settings and
+  sign-in are kept. With Fleasion, `integrations.fleasion.clear_cache_on_launch` clears them at every launch
+  so new replacements load.
+- A fixed proxy can be SOCKS5 and can have a login: `network.proxy_scheme`, `network.proxy_username` and
+  `network.proxy_password` in `config.yaml`, or the Proxy rows in the settings window, where the password is
+  hidden as you type. It is saved as plain text in `config.yaml`. From upstream mocktail.
 
 ### Fixed
 
@@ -63,6 +73,20 @@ Release notes on GitHub are taken from the matching section here.
 - The loading window no longer gets a dock icon of its own. It now shows under Nightcap's icon.
 - The browser tracker ID no longer fails with HTTP 500 on almost every launch. Nightcap reuses the ID
   Roblox already saved, asks for one only when there is none, and keeps its cookie out of your sign-in file.
+- The Flatpak no longer fails to install Roblox on NVIDIA under Wayland with "graphics canary exited with
+  status 139". NVIDIA's Vulkan driver crashed when Roblox closed its graphics, so every Roblox version failed
+  its startup test.
+- Holding right click over a button, the leaderboard, or the Roblox menu no longer freezes the cursor. The
+  cursor now only holds still while the camera turns, as on Windows.
+- The app menu entry opens Nightcap again on NixOS. The Nix package wrote the install path twice into the
+  `.desktop` file, so the menu entry pointed at a file that does not exist.
+- After you alt-tab away, moving the mouse over the game no longer turns the camera. Click in the game or
+  press a key to take control again.
+- The `.deb` package now finds its sign-in, update and error helpers, which Debian installs under
+  `/usr/lib/x86_64-linux-gnu`. From upstream mocktail.
+- Nightcap no longer crashes at first launch when it cannot read the sign-in helper's path. Thanks to
+  @justacalico.
+- In the Flatpak, the sign-in window now registers on the desktop's accessibility bus. Thanks to @reqhald.
 
 ### Changed
 

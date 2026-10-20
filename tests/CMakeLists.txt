@@ -85,6 +85,37 @@ target_link_libraries(discord_rpc_test PRIVATE
   GTest::gtest_main
 )
 
+add_executable(server_info_test server_info_test.cc)
+target_link_libraries(server_info_test PRIVATE
+  Mocktail::Runtime
+  GTest::gtest_main
+)
+mocktail_apply_compile_options(server_info_test)
+
+add_executable(https_json_test https_json_test.cc)
+target_link_libraries(https_json_test PRIVATE
+  Mocktail::Runtime
+  GTest::gtest_main
+)
+mocktail_apply_compile_options(https_json_test)
+
+add_executable(bionic_datagram_observer_test bionic_datagram_observer_test.cc)
+target_link_libraries(bionic_datagram_observer_test PRIVATE
+  Mocktail::Compat
+  GTest::gtest_main
+)
+mocktail_apply_compile_options(bionic_datagram_observer_test)
+
+add_executable(android_log_observer_test android_log_observer_test.cc)
+target_link_libraries(android_log_observer_test PRIVATE
+  stub_log
+  GTest::gtest_main
+)
+target_include_directories(android_log_observer_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+)
+mocktail_apply_compile_options(android_log_observer_test)
+
 add_executable(native_update_helper_fixture native_update_helper_fixture.cc)
 add_executable(native_progress_helper_fixture native_progress_helper_fixture.cc)
 mocktail_apply_compile_options(native_update_helper_fixture)
@@ -288,6 +319,13 @@ target_link_libraries(cursor_picture_source_test PRIVATE
   GTest::gtest_main
 )
 
+add_executable(roblox_mouse_behavior_query_test
+  roblox_mouse_behavior_query_test.cc)
+target_link_libraries(roblox_mouse_behavior_query_test PRIVATE
+  Mocktail::Runtime
+  GTest::gtest_main
+)
+
 add_executable(roblox_cursor_hook_test roblox_cursor_hook_test.cc)
 target_link_libraries(roblox_cursor_hook_test PRIVATE
   Mocktail::Runtime
@@ -297,6 +335,12 @@ target_link_libraries(roblox_cursor_hook_test PRIVATE
 
 add_executable(running_instance_test running_instance_test.cc)
 target_link_libraries(running_instance_test PRIVATE
+  Mocktail::Runtime
+  GTest::gtest_main
+)
+
+add_executable(roblox_cache_test roblox_cache_test.cc)
+target_link_libraries(roblox_cache_test PRIVATE
   Mocktail::Runtime
   GTest::gtest_main
 )
@@ -696,6 +740,23 @@ target_include_directories(chrome_trace_writer_test PRIVATE
 target_link_libraries(chrome_trace_writer_test PRIVATE GTest::gtest_main
   Threads::Threads nlohmann_json::nlohmann_json)
 mocktail_apply_compile_options(chrome_trace_writer_test)
+
+add_library(vulkan_driver_pin_fixture SHARED vulkan_driver_pin_fixture.cc)
+
+add_executable(vulkan_driver_pin_test
+  vulkan_driver_pin_test.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/vulkan_driver_pin.cc
+)
+target_include_directories(vulkan_driver_pin_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+)
+target_link_libraries(vulkan_driver_pin_test PRIVATE GTest::gtest_main
+  ${CMAKE_DL_LIBS})
+target_compile_definitions(vulkan_driver_pin_test PRIVATE
+  "MOCKTAIL_TEST_PIN_FIXTURE=\"$<TARGET_FILE:vulkan_driver_pin_fixture>\""
+)
+add_dependencies(vulkan_driver_pin_test vulkan_driver_pin_fixture)
+mocktail_apply_compile_options(vulkan_driver_pin_test)
 
 add_executable(vulkan_etc2_emulation_test
   vulkan_etc2_emulation_test.cc
@@ -1224,8 +1285,10 @@ gtest_discover_tests(memory_limit_test)
 gtest_discover_tests(runtime_paths_test)
 gtest_discover_tests(asset_overlay_names_test)
 gtest_discover_tests(roblox_cursor_hook_test)
+gtest_discover_tests(roblox_mouse_behavior_query_test)
 gtest_discover_tests(cursor_picture_source_test)
 gtest_discover_tests(running_instance_test)
+gtest_discover_tests(roblox_cache_test)
 gtest_discover_tests(single_instance_lock_test)
 gtest_discover_tests(supported_launch_policy_test)
 gtest_discover_tests(process_launch_policy_test)
@@ -1270,6 +1333,7 @@ gtest_discover_tests(texture_resample_test)
 gtest_discover_tests(chrome_trace_writer_test)
 gtest_discover_tests(vulkan_etc2_emulation_test)
 gtest_discover_tests(vulkan_pipeline_cache_test)
+gtest_discover_tests(vulkan_driver_pin_test)
 gtest_discover_tests(video_driver_policy_test)
 gtest_discover_tests(window_surface_lifecycle_test)
 gtest_discover_tests(window_creation_policy_test)
@@ -1279,6 +1343,10 @@ gtest_discover_tests(window_fullscreen_request_gate_test)
 gtest_discover_tests(window_state_store_test)
 gtest_discover_tests(roblox_fullscreen_menu_request_gate_test)
 gtest_discover_tests(roblox_fullscreen_runtime_bridge_test)
+gtest_discover_tests(server_info_test)
+gtest_discover_tests(https_json_test)
+gtest_discover_tests(bionic_datagram_observer_test)
+gtest_discover_tests(android_log_observer_test)
 gtest_discover_tests(roblox_output_device_bridge_test)
 gtest_discover_tests(window_text_input_owner_test)
 gtest_discover_tests(window_pointer_capture_owner_test)
