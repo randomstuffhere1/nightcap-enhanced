@@ -95,6 +95,11 @@ jobs:
           test -s release/Nightcap-x86_64.AppImage.zsync
           test -s release/Nightcap-x86_64-portable.tar.zst
           shopt -s nullglob
+          # The nightly builds an amd64 and an arm64 .deb, and an x86_64 and an
+          # aarch64 .rpm, so every pattern names one architecture. A generic
+          # '*.deb' would match both and fail the count. The aarch64 legs
+          # have no AppImage, tarball or pacman package, so the other two
+          # artifacts are unique on their own.
           rename_one() {
             local glob="$1" name="$2" matched
             matched=(release/$glob)
@@ -105,21 +110,10 @@ jobs:
             mv -- "${matched[0]}" "release/$name"
           }
           rename_one '*.pkg.tar.zst' nightcap-nightly-x86_64.pkg.tar.zst
-          rename_one '*.deb' nightcap-nightly_amd64.deb
-          rename_one '*.rpm' nightcap-nightly-x86_64.rpm
-          # The aarch64 legs have no AppImage, tarball or pacman package, so
-          # each pattern has to match exactly one of them.
-          move_one_of() {
-            local glob="$1" name="$2" matched
-            matched=(release/$glob)
-            if [[ ${#matched[@]} -ne 1 ]]; then
-              echo "::error::expected one aarch64 ${glob} package, found ${#matched[@]}"
-              exit 1
-            fi
-            mv -- "${matched[0]}" "release/$name"
-          }
-          move_one_of '*arm64.deb' nightcap-nightly_arm64.deb
-          move_one_of '*aarch64.rpm' nightcap-nightly-aarch64.rpm
+          rename_one '*amd64.deb' nightcap-nightly_amd64.deb
+          rename_one '*arm64.deb' nightcap-nightly_arm64.deb
+          rename_one '*x86_64.rpm' nightcap-nightly-x86_64.rpm
+          rename_one '*aarch64.rpm' nightcap-nightly-aarch64.rpm
           (
             cd release
             # The zsync file carries its own signature format, so it is not
@@ -151,21 +145,29 @@ jobs:
             if [[ -n "$previous" && "$previous" != "$GITHUB_SHA" ]] && \
                git cat-file -e "${previous}^{commit}" 2>/dev/null; then
               printf '### Commits since the previous nightly\n\n'
-              git log --no-merges --format='- %s (`%h`)' \
-                "${previous}..${GITHUB_SHA}" | head -60
+              # -n rather than a pipe into head: head closing the pipe early
+              # would kill git log with SIGPIPE, and pipefail would take the
+              # whole step down with it.
+              git log -n 60 --no-merges --format='- %s (`%h`)' \
+                "${previous}..${GITHUB_SHA}"
               printf '\n'
             fi
             printf '### Unreleased changelog\n\n'
             # Changelog bullets are already "- " at column 0 and wrap with a
             # two-space indent, so only headings need rewriting and indented
             # lines have to stay as they are or they become their own bullets.
-            awk '/^## \[Unreleased\]/{found=1; next}
+            # The awk stops itself after 60 lines for the same SIGPIPE reason.
+            awk 'function emit(text) {
+                   print text
+                   if (++printed >= 60) exit
+                 }
+                 /^## \[Unreleased\]/{found=1; next}
                  /^## \[/{if (found) exit}
                  found && NF {
-                   if ($0 ~ /^  /) { print; next }
-                   if ($0 ~ /^### /) { printf "#### %s\n", substr($0, 5); next }
-                   print
-                 }' CHANGELOG.md | head -60
+                   if ($0 ~ /^  /) { emit($0); next }
+                   if ($0 ~ /^### /) { emit(sprintf("#### %s", substr($0, 5))); next }
+                   emit($0)
+                 }' CHANGELOG.md
             printf '\n### Install\n\n'
             cat <<'EOF'
           | Artifact | x86_64 | aarch64 |
