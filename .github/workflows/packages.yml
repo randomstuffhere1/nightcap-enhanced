@@ -8,13 +8,15 @@ name: Nightly
 #   aarch64   .deb, .rpm
 #
 # The builds themselves live in build-packages.yml, shared with the tagged
-# release; this workflow is the schedule, the tag, and the release notes.
+# release; this workflow is the trigger, the tag, and the release notes.
 
 on:
-  schedule:
-    # 05:00 UTC daily. A run whose commit already carries the nightly tag
-    # exits without rebuilding, so a quiet day costs one probe job.
-    - cron: '0 5 * * *'
+  push:
+    # Every push to main publishes a new nightly. GitHub disables the
+    # scheduled workflows of an inactive repository, so a cron trigger cannot
+    # be relied on to keep the prerelease fresh.
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -44,7 +46,10 @@ jobs:
           set -Eeuo pipefail
           published="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/${TAG}" \
             --jq .object.sha 2>/dev/null || true)"
-          if [[ "$GITHUB_EVENT_NAME" == "schedule" && "$published" == "$GITHUB_SHA" ]]; then
+          # A push whose commit already carries the nightly tag exits without
+          # rebuilding. A manual run always builds, so the artifacts can be
+          # rebuilt and republished without a new commit.
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$published" == "$GITHUB_SHA" ]]; then
             echo 'build=false' >>"$GITHUB_OUTPUT"
             echo "nightly already points at $GITHUB_SHA; nothing to build"
           else
@@ -184,6 +189,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
+          # A push triggers a run per commit, and the runs are queued rather
+          # than run side by side. If the tag already carries a newer commit,
+          # publishing this build would roll the nightly backwards, so the run
+          # stops here and leaves the newer build alone.
+          published="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/${TAG}" \
+            --jq .object.sha 2>/dev/null || true)"
+          if [[ -n "$published" && "$published" != "$GITHUB_SHA" ]]; then
+            status="$(gh api "repos/$GITHUB_REPOSITORY/compare/${GITHUB_SHA}...${published}" \
+              --jq .status 2>/dev/null || true)"
+            if [[ "$status" == "behind" || "$status" == "diverged" ]]; then
+              echo "::notice::the ${TAG} tag already carries a newer commit (${published}); skipping"
+              exit 0
+            fi
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git tag --force "$TAG" "$GITHUB_SHA"

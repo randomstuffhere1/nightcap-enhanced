@@ -197,10 +197,13 @@ for unexpected in \
   fi
 done
 
-# The nightly runs on a schedule and on demand, then tags `nightly` rather than
-# upstream's `continuous`, so the two channels cannot overwrite each other.
+# The nightly runs on every push to main and on demand, then tags `nightly`
+# rather than upstream's `continuous`, so the two channels cannot overwrite
+# each other.
 for expected in \
-    'cron:' \
+    'push:' \
+    'branches:' \
+    'workflow_dispatch:' \
     'uses: ./.github/workflows/build-packages.yml' \
     'channel: nightly' \
     'git tag --force "$TAG"' \
@@ -219,10 +222,13 @@ for expected in \
     Fail "nightly workflow is missing: ${expected}"
 done
 
-# The nightly runs on a schedule and on demand. Per-commit triggers would
-# rebuild every artifact for each push and pull request.
+# The nightly runs on a push to main and on demand. GitHub disables the
+# scheduled workflows of an inactive repository, so a cron trigger would not
+# keep the prerelease fresh, and a pull request trigger would build every
+# artifact for every proposed change.
 for unexpected in \
-    'push:' \
+    'schedule:' \
+    'cron:' \
     'pull_request:'; do
   if grep -Fq -- "${unexpected}" "${WORKFLOW}"; then
     Fail "nightly workflow should not contain: ${unexpected}"

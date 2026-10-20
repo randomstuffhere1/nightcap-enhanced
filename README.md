@@ -155,7 +155,8 @@ Nightcap is in no other distribution repository.
 ### Nightly builds
 
 A prerelease called [`nightly`](https://github.com/randomstuffhere1/nightcap/releases/tag/nightly)
-carries every artifact built from the same commit, once a day from `main`:
+carries every artifact built from the same commit. Every push to `main` publishes
+a new one:
 
 | Artifact | x86_64 | aarch64 |
 | --- | --- | --- |
