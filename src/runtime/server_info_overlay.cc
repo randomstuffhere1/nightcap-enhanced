@@ -37,6 +37,18 @@ constexpr std::int64_t kStatsLogUs = 30 * kSecondUs;
 constexpr auto kTick = std::chrono::milliseconds(250);
 constexpr auto kFadeTick = std::chrono::milliseconds(16);
 constexpr std::int64_t kFadeUs = 200000;
+// How long the notice is held past its time when the game is not presenting
+// steadily, and how long it may be held in total. A fade that starts on a
+// stutter is seen as a jump rather than a transition, which reads as the
+// notice blinking away while the game catches up, so the notice waits for the
+// game to settle. The total is a backstop: a game that never reaches a steady
+// frame rate would otherwise keep the notice up for the whole session.
+constexpr std::int64_t kNoticeHoldStepUs = 1 * kSecondUs;
+constexpr std::int64_t kNoticeHoldLimitUs = 30 * kSecondUs;
+// Two queries this close together are one present, not two: the compositor
+// asks whether the layer has content before it asks for the frame. No game
+// presents anywhere near this fast.
+constexpr std::int64_t kSamePresentGapUs = 1000;
 
 struct Color {
   float r;
@@ -74,6 +86,11 @@ struct Shared {
   std::mutex join_mutex;
   std::string join_address;
   std::uint64_t join_generation = 0;
+  // The server the host joined to, when it knows the id. Roblox answers for it
+  // with its own data center, which is more precise than a geolocation of the
+  // address, so it is asked first.
+  std::string join_server_id;
+  std::uint64_t server_generation = 0;
 };
 
 Shared& State() {
@@ -331,6 +348,30 @@ void DrawText(Canvas* canvas, TTF_Font* font, const std::string& text,
   SDL_DestroySurface(surface);
 }
 
+// Cuts a line that is too wide for the card, rather than letting it run off
+// the screen. The cut is made between characters, so a multi-byte name is not
+// left half drawn.
+std::string FitText(TTF_Font* font, const std::string& text, int maximum) {
+  if (font == nullptr || maximum <= 0 || TextWidth(font, text) <= maximum) {
+    return text;
+  }
+  std::size_t length = text.size();
+  while (length > 0) {
+    // A continuation byte belongs to the character before it, so the cut goes
+    // back over those.
+    while (length > 0 &&
+           (static_cast<unsigned char>(text[length - 1]) & 0xC0) == 0x80) {
+      --length;
+    }
+    const std::string candidate = text.substr(0, length) + "…";
+    if (TextWidth(font, candidate) <= maximum) {
+      return candidate;
+    }
+    --length;
+  }
+  return "…";
+}
+
 struct Card {
   std::vector<std::uint8_t> rgba;
   int width = 0;
@@ -355,18 +396,33 @@ std::string ReadingText(int value, const char* unit) {
 }
 
 std::optional<Card> DrawPopup(Fonts* fonts, float scale,
-                              const std::string& place) {
+                              const std::string& place,
+                              const std::string& source, int view_width) {
   if (!OpenFonts(fonts, scale)) {
     return std::nullopt;
   }
+  // The notice is a single line, and the line is the message. Where the answer
+  // came from is kept to a short tag: it is worth knowing that the host asked
+  // Roblox rather than a third party, but a sentence about it would crowd out
+  // the place the player came for.
+  const std::string label = source.empty()
+                                 ? place
+                                 : "Server location: " + place + " (" +
+                                       source + ")";
   const float unit = scale;
   const float height = std::round(44.0F * unit);
   const float pad_left = 14.0F * unit;
   const float pad_right = 18.0F * unit;
   const float pin_width = 20.0F * unit;
   const float pin_gap = 6.0F * unit;
+  // The card takes at most three quarters of the window, so a long place name
+  // is cut rather than drawn off the screen.
+  const int maximum_text = std::max(
+      0, static_cast<int>(view_width * 0.75F) -
+             static_cast<int>(pad_left + pin_width + pin_gap + pad_right));
+  const std::string fitted = FitText(fonts->bold, label, maximum_text);
   const float title_width =
-      static_cast<float>(TextWidth(fonts->bold, place));
+      static_cast<float>(TextWidth(fonts->bold, fitted));
   const float width =
       std::ceil(pad_left + pin_width + pin_gap + title_width + pad_right);
   Canvas canvas(static_cast<int>(width), static_cast<int>(height));
@@ -388,7 +444,7 @@ std::optional<Card> DrawPopup(Fonts* fonts, float scale,
                                 -Circle(x, y, pin_x, head_y, 2.2F * unit));
               });
   cursor += pin_width + pin_gap;
-  DrawText(&canvas, fonts->bold, place, cursor, center_y, kInk);
+  DrawText(&canvas, fonts->bold, fitted, cursor, center_y, kInk);
   return Finish(canvas);
 }
 
@@ -507,11 +563,43 @@ void Blit(const Card& card, const OverlayRect& at, const OverlayRect& bounds,
   }
 }
 
-std::string LookupPlace(const std::string& address,
+// What a lookup answered, and where it came from.
+struct LookupResult {
+  // The summary to show, empty when the lookup found nothing.
+  std::string summary;
+  // "Roblox" for its own data center, "ipinfo.io" for the address lookup.
+  std::string source;
+  // The server the answer belongs to: the id for Roblox, the address for the
+  // address lookup.
+  std::string subject;
+};
+
+LookupResult LookupPlace(const std::string& address,
                         const std::atomic<bool>* cancel) {
   const std::optional<nlohmann::json> reply =
       GetHttpsJson("https://ipinfo.io/" + address + "/json", cancel);
-  return reply.has_value() ? ParseIpInfoPlace(*reply) : std::string();
+  LookupResult result;
+  if (reply.has_value()) {
+    result.summary = ParseIpInfoPlace(*reply);
+  }
+  return result;
+}
+
+// Roblox's own answer for a server: the data center's region code, such as
+// "IAD". It is the only source that knows Roblox's data centers, and asking
+// here keeps the session off any third party.
+LookupResult LookupRobloxRegion(const std::string& server_id,
+                                const std::atomic<bool>* cancel) {
+  const std::optional<nlohmann::json> reply =
+      GetHttpsJson(BuildRobloxServerUrl(server_id), cancel);
+  LookupResult result;
+  if (reply.has_value()) {
+    const std::optional<std::string> region = ParseRobloxRegion(*reply);
+    if (region.has_value()) {
+      result.summary = *region;
+    }
+  }
+  return result;
 }
 
 }
@@ -532,14 +620,47 @@ bool ServerInfoOverlay::Content::operator==(const Content& other) const {
   return visible == other.visible && show_popup == other.show_popup &&
          show_hud == other.show_hud && popup_alpha == other.popup_alpha &&
          hud_alpha == other.hud_alpha && place == other.place &&
-         ping_ms == other.ping_ms && fps == other.fps &&
-         show_fps == other.show_fps && show_ping == other.show_ping &&
-         position == other.position &&
+         source == other.source && ping_ms == other.ping_ms &&
+         fps == other.fps && show_fps == other.show_fps &&
+         show_ping == other.show_ping && position == other.position &&
          location_offset == other.location_offset &&
          pixel_width == other.pixel_width &&
          pixel_height == other.pixel_height && scale == other.scale;
 }
 
+void ServerInfoOverlay::RecordPresent(std::int64_t now_us) {
+  std::lock_guard<std::mutex> lock(pacing_mutex_);
+  // The same present asked twice: the second query is not another frame.
+  if (last_present_us_ != 0 && now_us - last_present_us_ < kSamePresentGapUs) {
+    return;
+  }
+  last_present_us_ = now_us;
+  presents_us_[present_next_] = now_us;
+  present_next_ = (present_next_ + 1) % kPacingSamples;
+  if (present_count_ < kPacingSamples) {
+    ++present_count_;
+  }
+}
+
+bool ServerInfoOverlay::PresentsAreSteady() const {
+  std::lock_guard<std::mutex> lock(pacing_mutex_);
+  if (present_count_ < kPacingSamples) {
+    return false;
+  }
+  // present_next_ points at the oldest kept present once the ring is full, so
+  // walking from it yields the intervals in the order they happened.
+  std::array<std::int64_t, kPacingSamples> intervals{};
+  std::int64_t previous = 0;
+  for (std::size_t index = 0; index < kPacingSamples; ++index) {
+    const std::int64_t present =
+        presents_us_[(present_next_ + index) % kPacingSamples];
+    if (index > 0) {
+      intervals[index - 1] = present - previous;
+    }
+    previous = present;
+  }
+  return PresentIntervalsAreSteady(intervals.data(), kPacingSamples - 1);
+}
 ServerInfoOverlay::ServerInfoOverlay(OverlayConfig config,
                                      std::filesystem::path config_file)
     : config_(config), config_file_(std::move(config_file)) {}
@@ -589,20 +710,43 @@ void ServerInfoOverlay::Stop() {
   started_ = false;
 }
 
+void ServerInfoOverlay::ObserveJoinedServer(std::string game_instance_id) {
+  if (game_instance_id.empty()) {
+    return;
+  }
+  Shared& shared = State();
+  std::lock_guard<std::mutex> lock(shared.join_mutex);
+  if (shared.join_server_id == game_instance_id) {
+    return;
+  }
+  shared.join_server_id = game_instance_id;
+  ++shared.server_generation;
+}
+
 void ServerInfoOverlay::Run() {
   const bool ttf_ready = TTF_Init();
   Fonts fonts;
   Shared& shared = State();
-  std::map<std::string, std::string> places;
+  // The answers, each with the server it belongs to: Roblox's own are keyed by
+  // the server id, the address lookups by the address. An answer is kept so a
+  // second join to the same server does not ask a third party again.
+  std::map<std::string, std::string> roblox_places;
+  std::map<std::string, std::string> address_places;
   std::uint64_t seen_generation = 0;
+  std::uint64_t seen_server_generation = 0;
   std::string address;
+  std::string server_id;
   std::string place;
+  std::string source;
   std::int64_t joined_at = 0;
   std::int64_t notice_until = 0;
+  std::int64_t notice_expired_at = 0;
   bool notice_armed = false;
   bool place_pending = false;
-  std::future<std::string> lookup;
-  std::string lookup_address;
+  bool roblox_done = false;
+  std::future<LookupResult> lookup;
+  std::string lookup_subject;
+  std::string lookup_source;
   std::uint64_t frames_before = window::PresentedFrameCount();
   std::int64_t frames_at = MonotonicMicros();
   int fps = -1;
@@ -652,31 +796,70 @@ void ServerInfoOverlay::Run() {
         notice_armed = true;
         place_pending = !address.empty() && looks_up;
         place.clear();
+        source.clear();
+        roblox_done = false;
+      }
+      if (shared.server_generation != seen_server_generation) {
+        seen_server_generation = shared.server_generation;
+        server_id = shared.join_server_id;
+        roblox_done = false;
+      }
+    }
+    // Roblox first: it is the only source that knows its own data centers, and
+    // answering here keeps the session off any third-party service. The
+    // address lookup waits for it, so a server Roblox can place is never sent
+    // to a third party.
+    const bool roblox_pending = lookup.valid() && lookup_source == "Roblox";
+    if (looks_up && !server_id.empty() && !roblox_done && !roblox_pending &&
+        place.empty() && !lookup.valid()) {
+      const auto cached = roblox_places.find(server_id);
+      if (cached != roblox_places.end()) {
+        place = cached->second;
+        source = "Roblox";
+      } else {
+        lookup_subject = server_id;
+        lookup_source = "Roblox";
+        lookup = std::async(std::launch::async, LookupRobloxRegion, server_id,
+                            &cancel_lookup_);
       }
     }
     if (lookup.valid() && lookup.wait_for(std::chrono::seconds(0)) ==
                               std::future_status::ready) {
-      const std::string found = lookup.get();
+      LookupResult found = lookup.get();
       if (cancel_lookup_.load(std::memory_order_relaxed)) {
         break;
       }
-      if (!found.empty()) {
-        places.emplace(lookup_address, found);
+      found.source = lookup_source;
+      found.subject = lookup_subject;
+      if (found.source == "Roblox") {
+        roblox_done = true;
+        if (!found.summary.empty()) {
+          roblox_places.emplace(found.subject, found.summary);
+        }
+      } else if (!found.summary.empty()) {
+        address_places.emplace(found.subject, found.summary);
       }
-      std::fprintf(stderr, "  [server-info] server=%s location=%s\n",
-                   lookup_address.c_str(),
-                   found.empty() ? "unknown" : found.c_str());
-      if (lookup_address == address) {
-        place = found;
+      std::fprintf(stderr, "  [server-info] server=%s provider=%s location=%s\n",
+                   found.subject.c_str(), found.source.c_str(),
+                   found.summary.empty() ? "unknown" : found.summary.c_str());
+      if (found.source == "Roblox" && found.subject == server_id) {
+        place = found.summary;
+        source = found.source;
+      } else if (found.source != "Roblox" && found.subject == address) {
+        place = found.summary;
+        source = found.source;
       }
     }
-    if (place_pending && !lookup.valid()) {
+    if (place_pending && !lookup.valid() && place.empty() &&
+        (server_id.empty() || roblox_done)) {
       place_pending = false;
-      const auto cached = places.find(address);
-      if (cached != places.end()) {
+      const auto cached = address_places.find(address);
+      if (cached != address_places.end()) {
         place = cached->second;
+        source = "ipinfo.io";
       } else {
-        lookup_address = address;
+        lookup_subject = address;
+        lookup_source = "ipinfo.io";
         lookup = std::async(std::launch::async, LookupPlace, address,
                             &cancel_lookup_);
       }
@@ -698,6 +881,22 @@ void ServerInfoOverlay::Run() {
       notice_armed = false;
       if (!place.empty()) {
         notice_until = now + kNoticeUs;
+        notice_expired_at = 0;
+      }
+    }
+    // The fade-out waits for the game to present steadily. A fade that starts
+    // on a stutter is seen as a jump rather than a transition, which reads as
+    // the notice blinking away while the game catches up, so the notice is held
+    // until the frame rate settles. The hold is bounded, so a game that never
+    // settles does not keep the notice up for the whole session.
+    if (notice_until != 0 && now >= notice_until) {
+      if (notice_expired_at == 0) {
+        notice_expired_at = notice_until;
+      }
+      const bool held_too_long =
+          now - notice_expired_at > kNoticeHoldLimitUs;
+      if (!held_too_long && !PresentsAreSteady()) {
+        notice_until = now + kNoticeHoldStepUs;
       }
     }
     if (in_game && (looks_up || shows_hud) && now - logged_at >= kStatsLogUs) {
@@ -738,6 +937,7 @@ void ServerInfoOverlay::Run() {
     if (content.visible) {
       if (content.show_popup) {
         content.place = place;
+        content.source = source;
       }
       if (content.show_hud) {
         content.show_fps = hud_fps;
@@ -764,8 +964,10 @@ void ServerInfoOverlay::Run() {
     }
     if (content.show_popup &&
         (!popup_card.has_value() || popup_drawn.place != content.place ||
+         popup_drawn.source != content.source ||
          popup_drawn.scale != content.scale)) {
-      popup_card = DrawPopup(&fonts, content.scale, content.place);
+      popup_card = DrawPopup(&fonts, content.scale, content.place,
+                             content.source, content.pixel_width);
       popup_drawn = content;
     }
     if (content.show_hud &&
@@ -847,6 +1049,10 @@ bool ServerInfoOverlay::QueryFrame(MocktailTextOverlayFrameInfo* frame) {
   if (g_instance == nullptr || frame == nullptr) {
     return false;
   }
+  // The compositor asks for the layer on every present, which is where the
+  // game shows its frame pacing. The notice's fade waits for that pacing to
+  // settle, so the presents are noted here.
+  g_instance->RecordPresent(MonotonicMicros());
   std::lock_guard<std::mutex> frame_lock(g_instance->frame_mutex_);
   *frame = g_instance->frame_;
   return frame->visible != 0;

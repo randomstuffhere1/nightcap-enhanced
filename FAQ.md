@@ -40,10 +40,13 @@ that.
 
 ## Where does the server location come from?
 
-When the server location popup is on, Nightcap looks up the game server's
-address at ipinfo.io once per new server. Only the server's address is sent.
-With the popup off, nothing is looked up, even with the frame rate or ping
-shown.
+When the server location popup is on, Nightcap asks Roblox which data center
+the session landed in whenever the host knows which server it joined, and the
+popup then names the data center's own code, such as `IAD`. When that is not
+known, the game server's address goes to ipinfo.io once per new server, and
+the popup names the city, its region and the country. Only the server's
+address is sent, never yours. With the popup off, nothing is looked up, even
+with the frame rate or ping shown.
 
 ## Where can I find logs for a bug report?
 

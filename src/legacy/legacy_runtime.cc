@@ -7443,6 +7443,9 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
   // Set when window.close_on_leave asked for the exit, which is a deliberate
   // exit rather than the runtime falling over before it drew anything.
   bool closed_because_the_player_left = false;
+  // The server the session joined, when the host knows it. The overlay asks
+  // Roblox about it, so the notice can name the data center.
+  std::string observed_game_instance_id;
   bool game_surface_events_completed = true;
   bool input_shutdown_completed = window_input_runtime == nullptr;
   bool resize_readiness_completed = true;
@@ -7577,6 +7580,19 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
                        "  [main] the player left the experience; closing "
                        "because window.close_on_leave is on\n");
           mocktail::window::RequestQuit();
+        }
+        // The overlay asks Roblox which data center the session landed in
+        // when the host knows which server it joined. Roblox is the only
+        // source that knows its own data centers, and answering there keeps
+        // the session off any third party.
+        if (experience_composition->InExperience()) {
+          const std::string game_instance_id =
+              experience_composition->ActiveGameInstanceId();
+          if (!game_instance_id.empty() &&
+              game_instance_id != observed_game_instance_id) {
+            observed_game_instance_id = game_instance_id;
+            server_info.ObserveJoinedServer(game_instance_id);
+          }
         }
       }
       const uint64_t fps_after_launch_ns = fps_trace ? MonotonicNanos() : 0;

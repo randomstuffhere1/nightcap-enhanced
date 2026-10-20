@@ -37,20 +37,53 @@ TEST(ServerInfoTest, IgnoresOtherLinesAndMalformedAddresses) {
   EXPECT_FALSE(ParseGameServerLog("UDMUX Address = 1.2.3.4"));
 }
 
-TEST(ServerInfoTest, NamesThePlaceByCityAndCountry) {
+TEST(ServerInfoTest, NamesThePlaceByCityRegionAndCountry) {
   const auto place = [](const char* text) {
     return ParseIpInfoPlace(nlohmann::json::parse(text, nullptr, false));
   };
+  // The city, its region and the country, in that order. A bare country code
+  // says almost nothing about where a server is, and two German cities share
+  // one, so the region is part of the answer.
   EXPECT_EQ(place(R"({"ip":"128.116.2.33","city":"Ashburn",)"
                   R"("region":"Virginia","country":"US"})"),
-            "Ashburn, US");
+            "Ashburn, Virginia, US");
   EXPECT_EQ(place(R"({"region":"Virginia","country":"US"})"),
             "Virginia, US");
+  EXPECT_EQ(place(R"({"city":"Ashburn","country":"US"})"), "Ashburn, US");
   EXPECT_EQ(place(R"({"country":"DE"})"), "DE");
   EXPECT_EQ(place(R"({"ip":"10.0.0.1","bogon":true})"), "");
   EXPECT_EQ(place(R"({"city":7,"country":"US"})"), "US");
   EXPECT_EQ(place("not json"), "");
   EXPECT_EQ(place("[1,2]"), "");
+}
+
+TEST(ServerInfoTest, ReadsRobloxsOwnDataCenterForAServer) {
+  EXPECT_EQ(BuildRobloxServerUrl("8281393821"),
+            "https://apis.roblox.com/game-servers/v1/servers/8281393821");
+  const auto region = [](const char* text) {
+    return ParseRobloxRegion(nlohmann::json::parse(text, nullptr, false));
+  };
+  EXPECT_EQ(region(R"({"region":"IAD"})").value_or(""), "IAD");
+  EXPECT_EQ(region(R"({"regionCode":"IAD"})").value_or(""), "IAD");
+  EXPECT_EQ(region(R"({"dataCenterRegion":"IAD"})").value_or(""), "IAD");
+  EXPECT_FALSE(region(R"({"region":""})").has_value());
+  EXPECT_FALSE(region(R"({"place":"Asylum"}).has_value());
+  EXPECT_FALSE(region("not json").has_value());
+}
+
+TEST(ServerInfoTest, HoldsTheNoticeWhileTheGameStutters) {
+  // A fade that starts on a stutter is seen as a jump rather than a
+  // transition, so a run of intervals with a long one in it is not steady.
+  const std::int64_t steady[] = {16666, 16666, 16666, 16666, 16666};
+  EXPECT_TRUE(PresentIntervalsAreSteady(steady, 5));
+  const std::int64_t stutter[] = {16666, 16666, 120000, 16666, 16666};
+  EXPECT_FALSE(PresentIntervalsAreSteady(stutter, 5));
+  // A frame rate under about 25 fps is not steady either: the fade would not
+  // land a frame inside it.
+  const std::int64_t slow[] = {50000, 50000};
+  EXPECT_FALSE(PresentIntervalsAreSteady(slow, 2));
+  EXPECT_FALSE(PresentIntervalsAreSteady(nullptr, 4));
+  EXPECT_FALSE(PresentIntervalsAreSteady(steady, 0));
 }
 
 TEST(ServerInfoTest, PingFollowsTheDelayToTheServersAcknowledgments) {

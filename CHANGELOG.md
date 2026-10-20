@@ -88,6 +88,14 @@ Release notes on GitHub are taken from the matching section here.
   more: the server's region after a join, your frame rate and your ping. The old switch now turns on
   `overlay.location`, and it is kept as a legacy alias, so a `config.yaml` that still carries it keeps loading.
   The overlay's own rows are in the settings window under Graphics, and they apply while you play.
+- The server location notice now says where the server is and where the answer came from: `Server location:
+  Ashburn, Virginia, US (ipinfo.io)`, or the data center's own code, `Server location: IAD (Roblox)`. The
+  address lookup names the city, its region and the country, not the city and a country code. Roblox is asked
+  first when the host knows which server it joined, so a session often never leaves Roblox's own servers, and
+  only the server's address is ever sent to a third party.
+- The server location notice waits for the game to present steadily before it fades. A fade that starts on a
+  stutter is seen as a jump rather than a transition, which reads as the notice blinking away while the game
+  catches up, so the notice stays up until the frame rate settles.
 - Replaced the settings window with a fuller one that edits `config.yaml` in place, keeping your comments,
   order and line endings, instead of writing a separate `config.ui.yaml` that layered over it. Every
   setting has a row, including the device identity, the window size, the proxy, Fleasion, the update source

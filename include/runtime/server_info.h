@@ -23,7 +23,15 @@ struct GameServerEndpoint {
 
 std::optional<GameServerEndpoint> ParseGameServerLog(std::string_view message);
 
+// The place an address provider gives for the server's address: the city, its
+// region and the country, in that order, skipping whatever is missing.
 std::string ParseIpInfoPlace(const nlohmann::json& document);
+
+// Roblox's own answer for a server: the data center's own region code, such
+// as "IAD". Roblox is the only source that knows its own data centers, and
+// answering here keeps the session off any third party.
+std::string BuildRobloxServerUrl(std::string_view server_id);
+std::optional<std::string> ParseRobloxRegion(const nlohmann::json& document);
 
 class AckPingEstimator {
  public:
@@ -99,6 +107,13 @@ OverlayLayout LayOutOverlay(OverlayPosition hud_position, int view_width,
 // should not, covering the full range in fade_us.
 float StepFade(float opacity, bool shown, std::int64_t elapsed_us,
                std::int64_t fade_us);
+
+// Whether a run of present intervals is regular enough that a fade would be
+// seen as a transition rather than a jump. Every interval has to be short
+// enough to land a frame or more inside the fade, so a stutter keeps the
+// notice up instead of letting it blink away mid-stall.
+bool PresentIntervalsAreSteady(const std::int64_t* intervals_us,
+                               std::size_t count);
 
 class OverlayConfigReloader final {
  public:

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <initializer_list>
 #include <utility>
 
 #include <nlohmann/json.hpp>
@@ -14,6 +15,16 @@
 #include "runtime/runtime_config_file.h"
 
 namespace mocktail::runtime {
+namespace {
+
+// Roblox's own server-info service, which is what the client itself asks for a
+// server's data center. It is unauthenticated and best effort: when it
+// answers, the result carries the region and no third party is contacted at
+// all. When it does not, the address lookup answers instead.
+constexpr char kRobloxServerUrlPrefix[] =
+    "https://apis.roblox.com/game-servers/v1/servers/";
+
+}  // namespace
 
 std::optional<GameServerEndpoint> ParseGameServerLog(std::string_view message) {
   constexpr std::string_view kAddress = "UDMUX Address = ";
@@ -63,15 +74,53 @@ std::string ParseIpInfoPlace(const nlohmann::json& document) {
   if (bogon != document.end() && bogon->is_boolean() && bogon->get<bool>()) {
     return {};
   }
-  std::string place = text("city");
-  if (place.empty()) {
-    place = text("region");
+  // What the player recognises, in the order it narrows down: the city first,
+  // then its region, then the country. A bare country code on its own says
+  // almost nothing about where a server is, and two German cities share one.
+  // The country's name and its code are the same fact, so only one of them is
+  // ever used.
+  const auto first_of = [&text](std::initializer_list<const char*> keys) {
+    for (const char* key : keys) {
+      const std::string part = text(key);
+      if (!part.empty()) {
+        return part;
+      }
+    }
+    return std::string();
+  };
+  std::string place;
+  for (const std::string& part :
+       {first_of({"city"}), first_of({"region"}),
+        first_of({"country_name", "country"})}) {
+    if (part.empty()) {
+      continue;
+    }
+    if (!place.empty()) {
+      place += ", ";
+    }
+    place += part;
   }
-  const std::string country = text("country");
-  if (place.empty()) {
-    return country;
+  return place;
+}
+
+std::string BuildRobloxServerUrl(std::string_view server_id) {
+  return std::string(kRobloxServerUrlPrefix) + std::string(server_id);
+}
+
+std::optional<std::string> ParseRobloxRegion(const nlohmann::json& document) {
+  if (!document.is_object()) {
+    return std::nullopt;
   }
-  return country.empty() ? place : place + ", " + country;
+  // The region is passed through rather than mapped: an invented table of
+  // codes could claim a country Roblox never said.
+  for (const char* key : {"region", "regionCode", "dataCenterRegion"}) {
+    const auto value = document.find(key);
+    if (value != document.end() && value->is_string() &&
+        !value->get_ref<const std::string&>().empty()) {
+      return value->get<std::string>();
+    }
+  }
+  return std::nullopt;
 }
 
 void AckPingEstimator::OnSend(std::int64_t now_us) {
@@ -245,6 +294,24 @@ float StepFade(float opacity, bool shown, std::int64_t elapsed_us,
                         static_cast<float>(fade_us)
                   : 1.0F;
   return std::clamp(opacity + (shown ? step : -step), 0.0F, 1.0F);
+}
+
+bool PresentIntervalsAreSteady(const std::int64_t* intervals_us,
+                               std::size_t count) {
+  if (intervals_us == nullptr || count == 0) {
+    return false;
+  }
+  // A present interval longer than this is a stutter the fade would fall
+  // through: the fade is 200 ms, so it only lands a frame or more inside it
+  // when every interval is under about 42 ms, which is a little under 25 fps.
+  // A steady 25-30 or 50-60 frame rate clears it, and a stutter does not.
+  constexpr std::int64_t kSteadyMaximumIntervalUs = 42000;
+  for (std::size_t index = 0; index < count; ++index) {
+    if (intervals_us[index] > kSteadyMaximumIntervalUs) {
+      return false;
+    }
+  }
+  return true;
 }
 
 namespace {
