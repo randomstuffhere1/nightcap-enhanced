@@ -85,7 +85,10 @@ jobs:
           # The nightly publishes under the `nightly` tag, so its zsync points
           # there. A tagged release needs no update information: the release
           # asset changes name with every version.
-          echo 'APPIMAGE_NAME=Nightcap-x86_64.AppImage' >>"$GITHUB_ENV"
+          # The name is a shell variable first: $GITHUB_ENV only reaches the
+          # steps after this one, so reading it here would be unbound.
+          APPIMAGE_NAME=Nightcap-x86_64.AppImage
+          echo "APPIMAGE_NAME=$APPIMAGE_NAME" >>"$GITHUB_ENV"
           if [[ "$CHANNEL" == nightly ]]; then
             echo "UPINFO=gh-releases-zsync|${GITHUB_REPOSITORY_OWNER}|${GITHUB_REPOSITORY#*/}|nightly|$APPIMAGE_NAME.zsync" >>"$GITHUB_ENV"
           fi
