@@ -151,6 +151,33 @@ grep -Fq 'MOCKTAIL_MINIZIP_HAS_STREAM_TELL' "${STUB_CMAKE}" ||
 grep -Fq 'mz_stream_tell(unzGetStream(archive))' "${ANDROID_STUB}" ||
   Fail 'Android assets do not support the minizip-ng offset API'
 
+# Every action is pinned to a commit, and a commit that does not exist stops
+# the workflow before it builds anything. The pins are listed here so a wrong
+# one fails the contracts job instead of a build.
+readonly ACTION_PINS=(
+  'actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830'
+  'actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830'
+  'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+  'actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d'
+  'actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128'
+  'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c'
+  'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+  'actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9'
+)
+while read -r pinned; do
+  found=0
+  for pin in "${ACTION_PINS[@]}"; do
+    if [[ "${pinned}" == "${pin}" ]]; then
+      found=1
+      break
+    fi
+  done
+  if [[ "${found}" -ne 1 ]]; then
+    Fail "action is pinned to an unknown commit: ${pinned}"
+  fi
+done < <(grep -rhoE 'uses: [a-zA-Z0-9_.-]+/[a-zA-Z0-9_./-]+@[a-f0-9]{40}' \
+  "${ROOT}/.github" | sed 's/^uses: //' | sort -u)
+
 test -f "${CCACHE_ACTION}" ||
   Fail 'the ccache action is missing'
 for expected in \
