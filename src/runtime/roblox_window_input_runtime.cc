@@ -40,11 +40,6 @@ Status RobloxWindowInputRuntime::Initialize() {
   Status status = text_surface_overlay_.Initialize(
       {window_viewport.pixel_width, window_viewport.pixel_height,
        window_viewport.dpi_scale});
-  // Same viewport as the chat overlay: both are drawn into the game's own
-  // window, in the same logical coordinates.
-  (void)host_toast_overlay_.Initialize({window_viewport.pixel_width,
-                                        window_viewport.pixel_height,
-                                        window_viewport.dpi_scale});
   if (!status.ok()) {
     return status;
   }
@@ -108,8 +103,6 @@ void RobloxWindowInputRuntime::PlatformEventCallback(
           std::get_if<platform::WindowResizedEvent>(&event.payload)) {
     (void)self->text_surface_overlay_.UpdateViewport(
         {resized->pixel_width, resized->pixel_height, resized->density_scale});
-    (void)self->host_toast_overlay_.UpdateViewport(
-        {resized->pixel_width, resized->pixel_height, resized->density_scale});
   }
   (void)self->runtime_.HandleEvent(event);
   if (const auto* focus =
@@ -136,7 +129,6 @@ Status RobloxWindowInputRuntime::Shutdown() {
   const RobloxInputSnapshot snapshot = runtime_.Snapshot();
   Status status = runtime_.Deactivate();
   Status overlay_status = text_surface_overlay_.Shutdown();
-  (void)host_toast_overlay_.Shutdown();
   initialized_ = false;
   if (!status.ok()) {
     return status;

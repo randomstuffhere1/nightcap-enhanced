@@ -186,22 +186,6 @@ target_link_libraries(failure_dialog_test PRIVATE
   GTest::gtest_main
 )
 
-add_executable(server_location_test server_location_test.cc)
-target_link_libraries(server_location_test PRIVATE
-  Mocktail::Runtime
-  # The resolver reports through the host overlay, which lives with the other
-  # overlays in the input runtime.
-  Mocktail::InputRuntime
-  GTest::gtest_main
-)
-
-add_executable(host_toast_overlay_test host_toast_overlay_test.cc)
-target_link_libraries(host_toast_overlay_test PRIVATE
-  # The host notice overlay lives with the other overlays in the input runtime.
-  Mocktail::InputRuntime
-  GTest::gtest_main
-)
-
 add_executable(startup_trace_test startup_trace_test.cc)
 target_link_libraries(startup_trace_test PRIVATE
   Mocktail::Runtime
@@ -1264,8 +1248,6 @@ gtest_discover_tests(compatibility_catalog_test)
 gtest_discover_tests(support_bundle_runtime_test)
 gtest_discover_tests(vulkan_icd_selection_test)
 gtest_discover_tests(session_log_test)
-gtest_discover_tests(server_location_test)
-gtest_discover_tests(host_toast_overlay_test)
 gtest_discover_tests(failure_dialog_test)
 gtest_discover_tests(settings_launcher_test)
 gtest_discover_tests(frame_rate_policy_test)

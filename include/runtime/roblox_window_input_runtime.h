@@ -7,7 +7,6 @@
 #include "mocktail/platform/text_clipboard.h"
 #include "mocktail/status.h"
 #include "runtime/roblox_input_native_adapter.h"
-#include "runtime/host_toast_overlay.h"
 #include "runtime/roblox_text_surface_overlay.h"
 
 namespace mocktail {
@@ -51,7 +50,6 @@ class RobloxWindowInputRuntime final {
                                    const platform::PlatformEvent& event);
 
   RobloxTextSurfaceOverlay text_surface_overlay_;
-  HostToastOverlay host_toast_overlay_;
   std::unique_ptr<platform::TextClipboard> text_clipboard_;
   RobloxInputRuntime runtime_;
   platform::SdlGamepadManager gamepads_;

@@ -306,10 +306,6 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
       ReadBoolean(environment, "MOCKTAIL_WIN_CLOSE_ON_LEAVE",
                   config.window_.close_on_leave,
                   &config.window_.close_on_leave_valid);
-  config.server_location_.enabled =
-      ReadBoolean(environment, "MOCKTAIL_SERVER_LOCATION_INDICATOR",
-                  config.server_location_.enabled,
-                  &config.server_location_.enabled_valid);
   config.theme_mode_ =
       environment.GetOr("MOCKTAIL_THEME", config.theme_mode_);
   for (const auto& [name, field] :

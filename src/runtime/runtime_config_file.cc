@@ -245,7 +245,7 @@ constexpr std::array<Field, 3> kFleasionPassthroughFields{
           "MOCKTAIL_FLEASION_CA_CERTIFICATE"},
 };
 
-constexpr std::array<Field, 8> kIntegrationBooleanFields{
+constexpr std::array<Field, 7> kIntegrationBooleanFields{
     Field{"integrations.discord_rpc.enabled",
           "MOCKTAIL_DISCORD_RPC_ENABLED", FieldKind::kBooleanDigits},
     Field{"integrations.fleasion.enabled", "MOCKTAIL_FLEASION_ENABLED",
@@ -261,8 +261,6 @@ constexpr std::array<Field, 8> kIntegrationBooleanFields{
     Field{"integrations.discord_rpc.join.public_servers_only",
           "MOCKTAIL_DISCORD_RPC_PUBLIC_SERVERS_ONLY",
           FieldKind::kBooleanDigits},
-    Field{"integrations.server_location_indicator",
-          "MOCKTAIL_SERVER_LOCATION_INDICATOR", FieldKind::kBooleanDigits},
 };
 
 constexpr std::array<Field, 5> kDiscordRequiredStringFields{
@@ -368,7 +366,10 @@ bool IsKnownKey(std::string_view key) {
          // parser below rather than in a field table.
          key == "overlay.server_info" || key == "overlay.location" ||
          key == "overlay.location_offset" || key == "overlay.fps" ||
-         key == "overlay.ping" || key == "overlay.position";
+         key == "overlay.ping" || key == "overlay.position" ||
+         // The fork's own server location indicator, retired in favour of the
+         // overlay and kept as a legacy alias so old configs still load.
+         key == "integrations.server_location_indicator";
 }
 
 // "auto, on, or off" from "auto on off". Used for the two enum kinds so the
@@ -639,6 +640,20 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
         return false;
       }
       (*environment)[variable] = parsed ? "on" : "off";
+    }
+  }
+  // This fork's own server location indicator is retired: the overlay does the
+  // same job. A config that still has the old switch keeps loading, and the
+  // switch becomes the overlay's own.
+  if (const auto retired = value("integrations.server_location_indicator");
+      retired.has_value()) {
+    bool parsed = false;
+    if (!ParseBoolean(*retired, &parsed)) {
+      *error = "integrations.server_location_indicator must be true or false";
+      return false;
+    }
+    if (parsed && !value("overlay.location").has_value()) {
+      (*environment)["MOCKTAIL_OVERLAY_LOCATION"] = "on";
     }
   }
   if (const auto position = value("overlay.position"); position.has_value()) {
@@ -1027,8 +1042,6 @@ RuntimeConfigLoadResult LoadRuntimeConfig(
     result.error = "window high-DPI policy is invalid";
   } else if (!result.config.window().close_on_leave_valid) {
     result.error = "window close-on-leave policy is invalid";
-  } else if (!result.config.server_location().enabled_valid) {
-    result.error = "server location indicator policy is invalid";
   } else if (result.config.vsync_mode() != "auto" &&
              result.config.vsync_mode() != "on" &&
              result.config.vsync_mode() != "off") {
@@ -1216,8 +1229,6 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
                           config.audio_input_device(), error) &&
       SetEnvironmentValue("MOCKTAIL_USE_SYSTEM_PROXY",
                           config.use_system_proxy() ? "1" : "0", error) &&
-      SetEnvironmentValue("MOCKTAIL_SERVER_LOCATION_INDICATOR",
-                          config.server_location().enabled ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_DISCORD_RPC_ENABLED",
                           config.discord_rpc().enabled ? "1" : "0", error) &&
       SetEnvironmentValue(

@@ -34,8 +34,8 @@ SystemProxyResult ResolveSystemProxy();
 // untouched when the environment does not configure one.
 //
 // This block was copied into every HTTP call site by hand and the copies
-// drifted: server_location built "http://host:port" without consulting the
-// scheme or the shared parser, so a configured SOCKS5 or HTTPS proxy was
+// drifted: the server info lookup built "http://host:port" without consulting
+// the scheme or the shared parser, so a configured SOCKS5 or HTTPS proxy was
 // silently ignored there. One implementation is the fix.
 //
 // NOPROXY is cleared whenever a proxy is applied, so an inherited no_proxy

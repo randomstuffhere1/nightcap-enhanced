@@ -13,7 +13,7 @@ get_filename_component(MOCKTAIL_INPUT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.."
 )
 
 add_library(mocktail_input_runtime STATIC
-  ${MOCKTAIL_INPUT_ROOT}/src/runtime/host_toast_overlay.cc
+  ${MOCKTAIL_INPUT_ROOT}/src/runtime/host_overlay_bridge.cc
   ${MOCKTAIL_INPUT_ROOT}/src/runtime/roblox_gamepad_input.cc
   ${MOCKTAIL_INPUT_ROOT}/src/runtime/roblox_input_native_adapter.cc
   ${MOCKTAIL_INPUT_ROOT}/src/runtime/roblox_input_router.cc

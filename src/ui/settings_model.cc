@@ -992,26 +992,6 @@ const std::vector<SettingsPage>& SettingsPages() {
             "Empty CA certificate uses Fleasion's own, in "
             "~/.config/Fleasion/proxy_ca."},
        }},
-      {"server",
-       "Server location",
-       "network-server-symbolic",
-       "Integrations",
-       {
-           {"Region lookup",
-            {
-                {"integrations.server_location_indicator",
-                 "Show the server's region",
-                 "After you join, ask which region the game server is in and "
-                 "show it in a small notice at the top of the game window. "
-                 "Roblox's own server info is asked first; otherwise the "
-                 "server's address goes to ipinfo.io. Only the server's "
-                 "address is sent, never yours.",
-                 SettingKind::kToggle,
-                 {},
-                 "false",
-                 {}},
-            }},
-       }},
       {"advanced",
        "Advanced",
        "applications-engineering-symbolic",

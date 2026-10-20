@@ -164,11 +164,6 @@ overlay:
   position: bottom_left
 
 integrations:
-  # Boolean (default: false): after you join, look up which region the game
-  # server is in and print it in the session log. Roblox's own server info is
-  # asked first; otherwise the server's address goes to ipinfo.io. Only the
-  # server's address is sent, never yours.
-  server_location_indicator: false
   fleasion:
     # Boolean (default: false): trust Fleasion's CA without editing Roblox files.
     enabled: false

@@ -10,15 +10,6 @@ Release notes on GitHub are taken from the matching section here.
 - `window.close_on_leave` closes Nightcap when you leave an experience instead of leaving it open on the
   Roblox home screen. Switching servers because you joined another place is not leaving, and a leave the
   runtime asked for still exits cleanly.
-- `integrations.server_location_indicator` looks up which region the game server is in after you join and shows
-  it in a small notice at the top of the game window, in the style of Sober's indicator: a dark pill with a
-  blue information mark and the place, region and country. It is drawn into the frame the game is already
-  presenting rather than into a window of its own, so it cannot take a click meant for the game. Roblox's
-  own server info is asked first; otherwise the server's address goes to ipinfo.io, the provider
-  Bloxstrap's server-location hint uses. Only the server's address is sent, never yours, and it is off by
-  default. A session is located once, on a connection opened after the client is up, so the client's own
-  conversations with Roblox are never mistaken for the server you joined, and nothing private or
-  link-local is looked up at all.
 - A compatibility profile can now declare payload-scoped graphics fixups: `swapchain_fixup` (a 0 to 3
   ladder, from clamping the swapchain extent to retrying a minimal FIFO swapchain), `shader_fixups` (prefer
   the host-keyed pipeline cache over the payload's own seed, and keep the shader entrypoints wrapped), and
@@ -90,6 +81,10 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Changed
 
+- This fork's own `integrations.server_location_indicator` is retired. The overlay does the same job and shows
+  more: the server's region after a join, your frame rate and your ping. The old switch now turns on
+  `overlay.location`, and it is kept as a legacy alias, so a `config.yaml` that still carries it keeps loading.
+  The overlay's own rows are in the settings window under Graphics, and they apply while you play.
 - Replaced the settings window with a fuller one that edits `config.yaml` in place, keeping your comments,
   order and line endings, instead of writing a separate `config.ui.yaml` that layered over it. Every
   setting has a row, including the device identity, the window size, the proxy, Fleasion, the update source
@@ -105,9 +100,6 @@ Release notes on GitHub are taken from the matching section here.
   read it. In Blade Ball the worst `vkFreeMemory` fell from 31ms to 3ms.
 - Nightcap starts about 0.2s faster. It no longer re-hashes an unchanged Roblox library twice on every
   launch, and the browser tracker no longer waits on a web request.
-- The server location notice stays up longer and no longer vanishes mid-stutter. Its slide-out only starts
-  once the game is presenting frames steadily (roughly 24 fps or better, with no long frames), so the
-  transition is seen instead of the notice appearing to blink away while the game catches up.
 - Building needs a Rust toolchain, 1.83 or newer, because the texture hot kernels moved to `rust/`. The
   crates are vendored under `rust/vendor`, so no build path reaches the network for them, and
   `rust/rust-toolchain.toml` picks the channel. Every packaging path declares the toolchain it needs,
@@ -121,9 +113,6 @@ Release notes on GitHub are taken from the matching section here.
   saved. An explicit cookie file or `MOCKTAIL_COOKIE` still fails closed.
 - Closing the game window no longer sits in `window closed, shutting down` for several seconds. The server
   location lookup now stops before it is joined rather than after, and notices it while it waits.
-- The server location notice no longer appears while you are only browsing the Roblox home screen, your
-  friends list or another page. The lookup now starts when you join an experience instead of at Nightcap's
-  first frame, so a home-screen connection to Roblox is no longer reported as the server you joined.
 
 ## [0.3.4] - 2026-10-11
 

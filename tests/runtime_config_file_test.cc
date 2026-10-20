@@ -187,12 +187,6 @@ TEST(RuntimeConfigBootstrapTest,
              "# Boolean (default: false): close Nightcap when you leave an "
              "experience,\n  # instead of staying open on the Roblox home "
              "screen.\n  close_on_leave: false",
-             "# Boolean (default: false): after you join, look up which region "
-             "the game\n  # server is in and print it in the session log. "
-             "Roblox's own server info is\n  # asked first; otherwise the "
-             "server's address goes to ipinfo.io. Only the\n  # server's "
-             "address is sent, never yours.\n  "
-             "server_location_indicator: false",
            "# HostAbi profile, run two isolated canaries with the selected "
            "graphics\n  "
            "# backend, and promote only on success. An existing current "
@@ -949,7 +943,50 @@ window:
   EXPECT_FALSE(defaults.window().close_on_leave);
 }
 
-TEST(RuntimeConfigFileTest, LoadsAndExportsTheServerLocationIndicator) {
+TEST(RuntimeConfigFileTest, ExportsTheOverlaySettings) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+overlay:
+  location: true
+  location_offset: 24
+  fps: true
+  ping: true
+  position: top_right
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_TRUE(loaded.config.overlay().location);
+  EXPECT_EQ(loaded.config.overlay().location_offset, 24);
+  EXPECT_TRUE(loaded.config.overlay().fps);
+  EXPECT_TRUE(loaded.config.overlay().ping);
+  EXPECT_EQ(loaded.config.overlay().position, OverlayPosition::kTopRight);
+
+  unsetenv("MOCKTAIL_OVERLAY_LOCATION");
+  unsetenv("MOCKTAIL_OVERLAY_LOCATION_OFFSET");
+  unsetenv("MOCKTAIL_OVERLAY_FPS");
+  unsetenv("MOCKTAIL_OVERLAY_PING");
+  unsetenv("MOCKTAIL_OVERLAY_POSITION");
+  std::string error;
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(loaded.config, &error)) << error;
+  EXPECT_STREQ(getenv("MOCKTAIL_OVERLAY_LOCATION"), "on");
+  EXPECT_STREQ(getenv("MOCKTAIL_OVERLAY_LOCATION_OFFSET"), "24");
+  EXPECT_STREQ(getenv("MOCKTAIL_OVERLAY_FPS"), "on");
+  EXPECT_STREQ(getenv("MOCKTAIL_OVERLAY_PING"), "on");
+  EXPECT_STREQ(getenv("MOCKTAIL_OVERLAY_POSITION"), "top_right");
+  unsetenv("MOCKTAIL_OVERLAY_LOCATION");
+  unsetenv("MOCKTAIL_OVERLAY_LOCATION_OFFSET");
+  unsetenv("MOCKTAIL_OVERLAY_FPS");
+  unsetenv("MOCKTAIL_OVERLAY_PING");
+  unsetenv("MOCKTAIL_OVERLAY_POSITION");
+}
+
+TEST(RuntimeConfigFileTest, TheRetiredIndicatorBecomesTheOverlay) {
+  // The fork's own server location indicator is retired in favour of the
+  // overlay, but a config that still carries it keeps loading.
   TemporaryDirectory temporary;
   const std::filesystem::path file = temporary.Write(R"yaml(
 version: 1
@@ -961,31 +998,17 @@ integrations:
       LoadRuntimeConfig(MapEnvironment(), file);
 
   ASSERT_TRUE(loaded) << loaded.error;
-  EXPECT_TRUE(loaded.config.server_location().enabled);
+  EXPECT_TRUE(loaded.config.overlay().location);
 
-  unsetenv("MOCKTAIL_SERVER_LOCATION_INDICATOR");
-  std::string error;
-  ASSERT_TRUE(ExportRuntimeConfigEnvironment(loaded.config, &error)) << error;
-  ASSERT_NE(getenv("MOCKTAIL_SERVER_LOCATION_INDICATOR"), nullptr);
-  EXPECT_STREQ(getenv("MOCKTAIL_SERVER_LOCATION_INDICATOR"), "1");
-  unsetenv("MOCKTAIL_SERVER_LOCATION_INDICATOR");
-
-  // Nothing is looked up unless the user asked for it.
-  EXPECT_FALSE(
-      RuntimeConfig::FromEnvironment(MapEnvironment())
-          .server_location()
-          .enabled);
-
-  const std::filesystem::path invalid = temporary.Write(R"yaml(
+  const std::filesystem::path off = temporary.Write(R"yaml(
 version: 1
 integrations:
-  server_location_indicator: perhaps
+  server_location_indicator: false
 )yaml");
-  const RuntimeConfigLoadResult rejected =
-      LoadRuntimeConfig(MapEnvironment(), invalid);
-  EXPECT_FALSE(rejected);
-  EXPECT_NE(rejected.error.find("integrations.server_location_indicator"),
-            std::string::npos);
+  const RuntimeConfigLoadResult rejected_off =
+      LoadRuntimeConfig(MapEnvironment(), off);
+  ASSERT_TRUE(rejected_off) << rejected_off.error;
+  EXPECT_FALSE(rejected_off.config.overlay().location);
 }
 
 TEST(RuntimeConfigFileTest, RejectsInvalidCloseOnLeavePolicy) {

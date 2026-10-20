@@ -85,10 +85,6 @@ the list below and nothing else. In a clone with both remotes,
   the join dialog turn into a host launch, and the browser closes itself. A
   public server link works as well, and one Roblox refuses says so instead of
   failing quietly.
-- **Where the game server is.** `integrations.server_location_indicator` shows
-  the place, region and country in a pill drawn into the frame the game is
-  already presenting, so it cannot take a click meant for the game. Off by
-  default. Upstream ships its own version of this as `overlay.location`.
 - **Rust texture kernels.** The resampler, the EAC alpha merge and the R11 and
   RG11 decoders live in `rust/` and link into the `libvulkan.so` stub.
   `kernel_parity_test` runs the Rust and C++ kernels over every format, stride
@@ -284,8 +280,9 @@ You can also edit the file by hand. Useful options:
   a desktop platform.
 - `window.close_on_leave: true` to close Nightcap when you leave an experience
   instead of staying on the Roblox home screen.
-- `integrations.server_location_indicator: true` to look up which region the
-  game server is in after you join and show it in a small notice.
+- `overlay.location: true` to show which region the game server is in after you
+  join, `overlay.fps` and `overlay.ping` for the performance overlay, and
+  `overlay.position` to move it to a corner.
 
 Each of these also has a row in the settings window, which is easier than
 editing YAML by hand.

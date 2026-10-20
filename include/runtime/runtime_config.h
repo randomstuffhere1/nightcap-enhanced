@@ -39,14 +39,6 @@ struct WindowConfig {
   bool close_on_leave_valid = true;
 };
 
-// Where the game server a session landed in is looked up and reported. Off by
-// default: it is the only setting that contacts anything about a session
-// beyond the join itself.
-struct ServerLocationConfig {
-  bool enabled = false;
-  bool enabled_valid = true;
-};
-
 // Roblox's own graphics quality level, forwarded to the client settings.
 // `automatic` leaves the client to choose, which is what the shipped default
 // does; an explicit level overrides the automatic value the throughput path
@@ -174,9 +166,6 @@ class RuntimeConfig {
     return graphics_backend_name_;
   }
   const WindowConfig& window() const { return window_; }
-  const ServerLocationConfig& server_location() const {
-    return server_location_;
-  }
   const std::string& theme_mode() const { return theme_mode_; }
   bool theme_mode_valid() const {
     return theme_mode_ == "roblox" || theme_mode_ == "system" ||
@@ -266,7 +255,6 @@ class RuntimeConfig {
   GraphicsBackend graphics_backend_ = GraphicsBackend::kVulkan;
   std::string graphics_backend_name_ = "direct-vulkan";
   WindowConfig window_;
-  ServerLocationConfig server_location_;
   std::string theme_mode_ = "roblox";
   InputCapabilityConfig input_capabilities_;
   DeviceProfile device_profile_ = *FindDeviceProfile(kDefaultDeviceProfileName);

@@ -117,8 +117,7 @@ TEST_F(SettingsModelTest, PagesListEverySettingOnce) {
   }
   EXPECT_EQ(titles, (std::vector<std::string_view>{
                         "Graphics", "Input", "Performance", "Audio",
-                        "Network", "Discord", "Fleasion", "Server location",
-                        "Advanced"}));
+                        "Network", "Discord", "Fleasion", "Advanced"}));
 }
 
 TEST_F(SettingsModelTest, EveryConfigKeyHasARow) {

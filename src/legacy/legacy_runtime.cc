@@ -68,6 +68,7 @@
 #include "runtime/environment.h"
 #include "runtime/discord_rpc.h"
 #include "runtime/server_info_overlay.h"
+#include "runtime/host_overlay_bridge.h"
 #include "runtime/luau_codegen_switch.h"
 #include "runtime/jnivm_platform_web_callbacks.h"
 #include "runtime/pump_stall_diagnostics.h"
@@ -76,7 +77,6 @@
 #include "runtime/asset_overlay_names.h"
 #include "runtime/roblox_cursor_hook.h"
 #include "runtime/roblox_app_lifecycle.h"
-#include "runtime/server_location.h"
 #include "runtime/startup_trace.h"
 #include "runtime/roblox_capability_resolver.h"
 #include "runtime/roblox_platform_web_symbols.h"
@@ -4924,6 +4924,9 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
                 << "; continuing without Rich Presence\n";
     }
   }
+  // Keeps the host notice layer's provider in the binary. The compositor finds
+  // it by name, and nothing else refers to it.
+  mocktail::runtime::AnchorHostOverlayProvider();
   mocktail::runtime::ServerInfoOverlay server_info(
       runtime_config.overlay(), CurrentRuntimePaths().config_file());
   if (!runtime_config.headless()) {
@@ -7440,8 +7443,6 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
   // Set when window.close_on_leave asked for the exit, which is a deliberate
   // exit rather than the runtime falling over before it drew anything.
   bool closed_because_the_player_left = false;
-  mocktail::runtime::ServerLocationResolver server_location;
-  bool server_location_requested = false;
   bool game_surface_events_completed = true;
   bool input_shutdown_completed = window_input_runtime == nullptr;
   bool resize_readiness_completed = true;
@@ -7577,30 +7578,6 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
                        "because window.close_on_leave is on\n");
           mocktail::window::RequestQuit();
         }
-        // One lookup per session, watched from the moment the guest starts
-        // joining an experience. The resolver runs on its own worker, so this
-        // never delays the loop.
-        //
-        // The signal is the experience the composition is joining or running,
-        // not the window. The Roblox home screen presents frames and keeps its
-        // own connections to Roblox open long before a game is joined, so
-        // watching from the first presented frame located a home-screen API or
-        // CDN socket and reported it as the server the player joined. Only a
-        // queued or running experience means there is a server to locate, and
-        // it is set before the game opens its connection, so the resolver's
-        // baseline still excludes it.
-        if (runtime_config.server_location().enabled &&
-            experience_composition->InExperience() &&
-            !server_location_requested) {
-          server_location_requested = true;
-          server_location.ObserveJoinedServer(
-              experience_composition->ActiveGameInstanceId());
-        } else if (server_location_requested &&
-                   !server_location.Watching()) {
-          // The previous watch is done, having reported or given up. Arming
-          // again lets a later join, or a second server, be looked up too.
-          server_location_requested = false;
-        }
       }
       const uint64_t fps_after_launch_ns = fps_trace ? MonotonicNanos() : 0;
       // The pacer sleeps only under throttled presentation. Unthrottled, the
@@ -7686,8 +7663,6 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
                   << experience_shutdown.message() << '\n';
       }
     }
-    // Joined before the session log goes away: the lookup prints into it.
-    server_location.Stop();
     if (game_session_runtime != nullptr) {
       const mocktail::runtime::GameSessionUpdateResult shutdown_result =
           game_session_runtime->Shutdown();
