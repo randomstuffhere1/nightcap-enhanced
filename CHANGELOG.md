@@ -50,13 +50,19 @@ Release notes on GitHub are taken from the matching section here.
   All are in the settings window under Graphics, and changes apply while you play, without a restart.
 - Advanced settings can clear Roblox's downloaded game assets, and show how much space they use. Settings and
   sign-in are kept. With Fleasion, `integrations.fleasion.clear_cache_on_launch` clears them at every launch
-  so new replacements load.
+  so new replacements load. A join from the website closes an open Nightcap first, so the clear still runs.
 - A fixed proxy can be SOCKS5 and can have a login: `network.proxy_scheme`, `network.proxy_username` and
   `network.proxy_password` in `config.yaml`, or the Proxy rows in the settings window, where the password is
   hidden as you type. It is saved as plain text in `config.yaml`. From upstream mocktail.
 
 ### Fixed
 
+- Fleasion replacements load again. With `integrations.fleasion.enabled`, Nightcap sets
+  `FFlagAssetProviderUseAssetDeliveryV3` to `False`, so Roblox requests assets through the endpoint
+  Fleasion rewrites. A value in `~/.config/mocktail/fflags.json` still wins.
+- A frame-rate limit of `unlimited` or above 240 now goes past 240 FPS. Nightcap writes it to
+  Roblox's own frame-rate cap, since Roblox stops `DFIntTaskSchedulerTargetFps` at 240.
+- Each install now sends Roblox its own random Android device ID instead of `0000000000000000`.
 - Joining a game from a website link while already in a game no longer freezes Nightcap. It leaves the
   current game and joins the new one, and leaving that game returns to the home screen.
 - Game links opened from a browser are no longer rejected when they ask for any public server, or when
