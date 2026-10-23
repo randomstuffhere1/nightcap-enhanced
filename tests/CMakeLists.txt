@@ -700,6 +700,18 @@ target_link_libraries(etc2_decoder_test PRIVATE GTest::gtest_main
   Threads::Threads Mocktail::RustKernels)
 mocktail_apply_compile_options(etc2_decoder_test)
 
+add_executable(etc2_gpu_decoder_test
+  etc2_gpu_decoder_test.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/etc2_gpu_decoder.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/etc2_decoder.cc
+)
+target_include_directories(etc2_gpu_decoder_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+)
+target_link_libraries(etc2_gpu_decoder_test PRIVATE GTest::gtest_main
+  Threads::Threads dl Mocktail::RustKernels)
+mocktail_apply_compile_options(etc2_gpu_decoder_test)
+
 pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
 
 add_executable(texture_override_test
@@ -760,6 +772,7 @@ add_executable(vulkan_etc2_emulation_test
   ${PROJECT_SOURCE_DIR}/src/graphics/chrome_trace_writer.cc
   ${PROJECT_SOURCE_DIR}/src/graphics/etc2_decoder.cc
   ${PROJECT_SOURCE_DIR}/src/graphics/mocktail_rs_bridge.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/etc2_gpu_decoder.cc
   ${PROJECT_SOURCE_DIR}/src/graphics/texture_override.cc
 )
 target_include_directories(vulkan_etc2_emulation_test PRIVATE
@@ -822,6 +835,23 @@ target_link_libraries(pump_stall_diagnostics_test PRIVATE GTest::gtest_main
   Threads::Threads)
 mocktail_apply_compile_options(pump_stall_diagnostics_test)
 gtest_discover_tests(pump_stall_diagnostics_test)
+
+add_executable(vulkan_etc2_gpu_emulation_test
+  vulkan_etc2_gpu_emulation_test.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/vulkan_etc2_emulation.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/chrome_trace_writer.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/etc2_decoder.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/mocktail_rs_bridge.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/etc2_gpu_decoder.cc
+  ${PROJECT_SOURCE_DIR}/src/graphics/texture_override.cc
+)
+target_include_directories(vulkan_etc2_gpu_emulation_test PRIVATE
+  ${PROJECT_SOURCE_DIR}/include
+)
+target_link_libraries(vulkan_etc2_gpu_emulation_test PRIVATE
+  GTest::gtest_main Threads::Threads PkgConfig::LIBPNG dl
+  Mocktail::RustKernels)
+mocktail_apply_compile_options(vulkan_etc2_gpu_emulation_test)
 
 add_executable(video_driver_policy_test
   video_driver_policy_test.cc
@@ -1324,11 +1354,13 @@ gtest_discover_tests(host_surface_commit_gate_test)
 gtest_discover_tests(vulkan_present_progress_gate_test)
 gtest_discover_tests(vulkan_text_overlay_compositor_test)
 gtest_discover_tests(etc2_decoder_test)
+gtest_discover_tests(etc2_gpu_decoder_test)
 gtest_discover_tests(texture_override_test)
 gtest_discover_tests(texture_resample_test)
 gtest_discover_tests(chrome_trace_writer_test)
 gtest_discover_tests(vulkan_etc2_emulation_test)
 gtest_discover_tests(vulkan_pipeline_cache_test)
+gtest_discover_tests(vulkan_etc2_gpu_emulation_test)
 gtest_discover_tests(vulkan_driver_pin_test)
 gtest_discover_tests(video_driver_policy_test)
 gtest_discover_tests(window_surface_lifecycle_test)

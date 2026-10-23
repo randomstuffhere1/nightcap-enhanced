@@ -2,6 +2,7 @@
 /build/
 /build-test/
 /build_*/
+/build-merge-check/
 /build-flatpak/
 /build-anylinux*/
 /.flatpak-builder/
