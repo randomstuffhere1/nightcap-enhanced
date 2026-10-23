@@ -46,10 +46,16 @@ jobs:
           set -Eeuo pipefail
           published="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/${TAG}" \
             --jq .object.sha 2>/dev/null || true)"
+          assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/${TAG}" \
+            --jq '.assets | length' 2>/dev/null || true)"
           # A push whose commit already carries the nightly tag exits without
           # rebuilding. A manual run always builds, so the artifacts can be
-          # rebuilt and republished without a new commit.
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$published" == "$GITHUB_SHA" ]]; then
+          # rebuilt and republished without a new commit. So does a re-run of a
+          # failed run, and so does a tag whose release is missing or has no
+          # assets: in both cases the previous publication never finished, and
+          # skipping would leave the nightly without its files forever.
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$published" == "$GITHUB_SHA" &&
+                "${GITHUB_RUN_ATTEMPT:-1}" -eq 1 && "${assets:-0}" -gt 0 ]]; then
             echo 'build=false' >>"$GITHUB_OUTPUT"
             echo "nightly already points at $GITHUB_SHA; nothing to build"
           else
@@ -145,6 +151,10 @@ jobs:
           {
             printf 'Automated build of `main` at `%s` (%s).\n\n' \
               "${GITHUB_SHA:0:8}" "$(date -u '+%Y-%m-%d %H:%M UTC')"
+            # The subject of the commit this nightly was built from. It is
+            # quoted rather than printed as a bullet so it reads as a heading
+            # for the notes below; the commit body is left out on purpose.
+            printf '> %s\n\n' "$(git log -1 --format='%s' "$GITHUB_SHA")"
             printf 'Untested and unreleased. Use a [tagged release](%s/releases) for normal play.\n\n' \
               "https://github.com/${GITHUB_REPOSITORY}"
             if [[ -n "$previous" && "$previous" != "$GITHUB_SHA" ]] && \
@@ -187,8 +197,8 @@ jobs:
           packager is still x86-64 only, and Docker Hub dropped arm64 from the
           Arch base image.
           EOF
-          } > release/notes.md
-          cat release/notes.md
+          } > nightly-notes.md
+          cat nightly-notes.md
 
       - name: Update nightly release
         shell: bash
@@ -196,41 +206,77 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
+          repo="$GITHUB_REPOSITORY"
           # A push triggers a run per commit, and the runs are queued rather
-          # than run side by side. If the tag already carries a newer commit,
-          # publishing this build would roll the nightly backwards, so the run
-          # stops here and leaves the newer build alone.
-          published="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/${TAG}" \
+          # than run side by side. Only skip when the tag already carries a
+          # descendant of this commit, since publishing then would roll the
+          # nightly backwards. A diverged history (a rewritten branch, a merge
+          # from upstream) is published: there is no newer build to protect.
+          published="$(gh api "repos/${repo}/git/ref/tags/${TAG}" \
             --jq .object.sha 2>/dev/null || true)"
-          if [[ -n "$published" && "$published" != "$GITHUB_SHA" ]]; then
-            status="$(gh api "repos/$GITHUB_REPOSITORY/compare/${GITHUB_SHA}...${published}" \
-              --jq .status 2>/dev/null || true)"
-            if [[ "$status" == "behind" || "$status" == "diverged" ]]; then
-              echo "::notice::the ${TAG} tag already carries a newer commit (${published}); skipping"
-              exit 0
-            fi
+          if [[ -n "$published" && "$published" != "$GITHUB_SHA" ]] && \
+             git cat-file -e "${published}^{commit}" 2>/dev/null && \
+             git merge-base --is-ancestor "$GITHUB_SHA" "$published"; then
+            echo "::notice::the ${TAG} tag already carries a newer commit (${published}); skipping"
+            exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git tag --force "$TAG" "$GITHUB_SHA"
           git push origin "refs/tags/${TAG}" --force
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --prerelease --target "$GITHUB_SHA" \
-              --title "Nightcap nightly" \
-              --notes-file release/notes.md
+
+          # Everything below is idempotent: an existing tag, an existing
+          # release and assets under the same names are all updated in place
+          # instead of aborting the step. The release is created through the
+          # API because `gh release create` refuses a tag that is already
+          # there, and a single failed `gh release view` check must not stop
+          # the upload.
+          release="$(gh api "repos/${repo}/releases/tags/${TAG}" 2>/dev/null || true)"
+          if ! jq -e '.id' >/dev/null 2>&1 <<<"$release"; then
+            release="$(gh api -X POST "repos/${repo}/releases" \
+              -f tag_name="$TAG" \
+              -f target_commitish="$GITHUB_SHA" \
+              -f name='Nightcap nightly' \
+              -f body="$(cat nightly-notes.md)" \
+              -F prerelease=true \
+              -F draft=false 2>/dev/null || true)"
+            # A release another run created between the GET and the POST is
+            # not an error: read it back and carry on.
+            if ! jq -e '.id' >/dev/null 2>&1 <<<"$release"; then
+              release="$(gh api "repos/${repo}/releases/tags/${TAG}")"
+            fi
           fi
-          gh release edit "$TAG" \
-            --title "Nightcap nightly" \
-            --notes-file release/notes.md
-          gh release upload "$TAG" release/* --clobber
+          gh api -X PATCH "repos/${repo}/releases/$(jq -r .id <<<"$release")" \
+            -f name='Nightcap nightly' \
+            -f body="$(cat nightly-notes.md)" \
+            -F prerelease=true \
+            -F draft=false >/dev/null
+
+          # One asset per call, retried: the AppImage and the portable tarball
+          # are hundreds of megabytes, and one transient 5xx used to abort the
+          # step with the rest of the build unpublished. --clobber makes a
+          # retried upload replace the partial asset.
+          for asset in release/*; do
+            [[ -e "$asset" ]] || continue
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$asset" -R "$repo" --clobber; then
+                break
+              fi
+              if [[ "$attempt" -eq 3 ]]; then
+                echo "::error::could not upload ${asset}"
+                exit 1
+              fi
+              echo "::warning::upload of ${asset} failed; retrying"
+              sleep 10
+            done
+          done
           # Drop assets left by earlier runs under other names.
           while IFS= read -r asset; do
             case "$asset" in
               SHA256SUMS|Nightcap-x86_64.AppImage|Nightcap-x86_64.AppImage.zsync|Nightcap-x86_64-portable.tar.zst|nightcap-nightly-x86_64.pkg.tar.zst|nightcap-nightly_amd64.deb|nightcap-nightly_arm64.deb|nightcap-nightly-x86_64.rpm|nightcap-nightly-aarch64.rpm|*.sha256)
                 ;;
               *)
-                gh release delete-asset "$TAG" "$asset" --yes
+                gh release delete-asset "$TAG" "$asset" -R "$repo" --yes
                 ;;
             esac
-          done < <(gh release view "$TAG" --json assets --jq '.assets[].name')
+          done < <(gh release view "$TAG" -R "$repo" --json assets --jq '.assets[].name')
