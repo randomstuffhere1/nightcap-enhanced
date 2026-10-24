@@ -183,7 +183,7 @@ jobs:
         with:
           scope: ccache-ci-${{ matrix.arch }}
           mode: restore
-          ttl: ${{ github.event inputs.ccache_ttl }}
+          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build and check native executables
         shell: bash
