@@ -11,6 +11,11 @@ on:
           - 'clear cache on workflow start'
           - 'clear cache then end workflow'
         default: ''
+      ccache_ttl:
+        description: 'CCache TTL in hours'
+        required: false
+        type: number
+        default: 24
       tag:
         description: Release tag to publish, such as v0.3.4
         required: true

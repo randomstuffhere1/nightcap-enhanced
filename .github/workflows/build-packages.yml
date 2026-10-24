@@ -21,6 +21,11 @@ on:
         required: false
         type: string
         default: ''
+      ccache_ttl:
+        description: 'CCache TTL in hours'
+        required: false
+        type: number
+        default: 24
 
 env:
   # ccache and mold are detected by CMake on its own; the workflows only install
@@ -130,6 +135,7 @@ jobs:
         with:
           scope: ccache-appimage-x86_64
           mode: restore
+          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build AppImage
         shell: bash
@@ -269,6 +275,7 @@ jobs:
         with:
           scope: ccache-portable-x86_64
           mode: restore
+          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build the standalone bundle
         shell: bash
@@ -427,6 +434,7 @@ jobs:
         with:
           scope: ccache-deb-${{ matrix.arch }}
           mode: restore
+          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build DEB
         shell: bash
@@ -510,6 +518,7 @@ jobs:
         with:
           scope: ccache-rpm-${{ matrix.arch }}
           mode: restore
+          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build RPM
         shell: bash

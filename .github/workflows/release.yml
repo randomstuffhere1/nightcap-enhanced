@@ -13,6 +13,11 @@ on:
           - 'clear cache on workflow start'
           - 'clear cache then end workflow'
         default: ''
+      ccache_ttl:
+        description: 'CCache TTL in hours'
+        required: false
+        type: number
+        default: 24
 
 permissions:
   contents: read

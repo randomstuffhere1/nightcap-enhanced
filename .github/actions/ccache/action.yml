@@ -20,7 +20,7 @@ inputs:
     required: true
   ttl:
     description: How many hours a cache stays usable.
-    default: '6'
+    default: '24'
   path:
     description: The ccache directory.
     default: .ccache
