@@ -317,11 +317,18 @@ target_link_libraries(roblox_cursor_hook_test PRIVATE
   GTest::gtest_main
 )
 
+add_executable(signal_disposition_probe signal_disposition_probe.cc)
+mocktail_apply_compile_options(signal_disposition_probe)
+
 add_executable(running_instance_test running_instance_test.cc)
 target_link_libraries(running_instance_test PRIVATE
   Mocktail::Runtime
   GTest::gtest_main
 )
+target_compile_definitions(running_instance_test PRIVATE
+  "MOCKTAIL_TEST_SIGNAL_PROBE=\"$<TARGET_FILE:signal_disposition_probe>\""
+)
+add_dependencies(running_instance_test signal_disposition_probe)
 
 add_executable(roblox_cache_test roblox_cache_test.cc)
 target_link_libraries(roblox_cache_test PRIVATE

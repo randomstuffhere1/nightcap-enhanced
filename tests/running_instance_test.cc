@@ -19,6 +19,10 @@
 #include <thread>
 #include <vector>
 
+#ifndef MOCKTAIL_TEST_SIGNAL_PROBE
+#error "MOCKTAIL_TEST_SIGNAL_PROBE is required"
+#endif
+
 namespace mocktail {
 namespace runtime {
 namespace {
@@ -328,12 +332,12 @@ TEST_F(RunningInstanceTest, RestartStartsTheProgramWhereTheOldOneRan) {
 
 TEST_F(RunningInstanceTest, StartDetachedDoesNotPassOnIgnoredSignals) {
   const std::filesystem::path marker = directory_ / "marker";
-  const std::filesystem::path program = directory_ / "program.sh";
-  std::ofstream(program) << "#!/bin/sh\ngrep SigIgn /proc/$$/status > '"
-                         << marker.string() << ".tmp' && mv '"
-                         << marker.string() << ".tmp' '" << marker.string()
-                         << "'\n";
-  std::filesystem::permissions(program, std::filesystem::perms::owner_all);
+  // The program is the probe binary rather than a shell script, because a shell
+  // answers for itself: bash invoked as sh ignores SIGINT on itself before it
+  // runs anything, so a script reports that choice instead of what this process
+  // handed it. The probe reads its own mask, so what it writes is exactly what
+  // StartDetached passed across the exec.
+  const std::filesystem::path program = MOCKTAIL_TEST_SIGNAL_PROBE;
 
   // A shell runs a background job with SIGINT and SIGQUIT ignored.
   struct sigaction ignore {};
@@ -342,8 +346,11 @@ TEST_F(RunningInstanceTest, StartDetachedDoesNotPassOnIgnoredSignals) {
   struct sigaction old_quit {};
   sigaction(SIGINT, &ignore, &old_int);
   sigaction(SIGQUIT, &ignore, &old_quit);
+  LaunchCommand command;
+  // This list starts at argv[0], as the one ReadLaunchCommand returns does.
+  command.arguments = {program.string(), marker.string()};
   std::string error;
-  const bool started = StartDetached(program, &error);
+  const bool started = StartDetached(program, &error, command);
   sigaction(SIGINT, &old_int, nullptr);
   sigaction(SIGQUIT, &old_quit, nullptr);
   ASSERT_TRUE(started) << error;
