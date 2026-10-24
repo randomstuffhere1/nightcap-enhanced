@@ -2,6 +2,15 @@ name: Check AUR packages
 
 on:
   workflow_dispatch:
+    inputs:
+      cache_action:
+        description: 'Cache action'
+        required: false
+        type: choice
+        options:
+          - 'clear cache on workflow start'
+          - 'clear cache then end workflow'
+        default: ''
 
 permissions:
   contents: read

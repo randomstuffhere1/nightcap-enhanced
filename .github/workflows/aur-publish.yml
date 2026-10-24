@@ -3,6 +3,15 @@ name: Publish AUR packages
 on:
   workflow_dispatch:
     inputs:
+      cache_action:
+        description: 'Cache action'
+        required: false
+        type: choice
+        options:
+          - 'clear cache on workflow start'
+          - 'clear cache then end workflow'
+        default: ''
+    inputs:
       tag:
         description: Release tag to publish, such as v0.3.4
         required: true

@@ -21,9 +21,19 @@ on:
       - 'tests/**'
       - 'third_party/**'
   workflow_dispatch:
+    inputs:
+      cache_action:
+        description: 'Cache action'
+        required: false
+        type: choice
+        options:
+          - 'clear cache on workflow start'
+          - 'clear cache then end workflow'
+        default: ''
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -35,6 +45,34 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      - name: Clear caches on workflow start
+        if: github.event.inputs.cache_action == 'clear cache on workflow start' || github.event.inputs.cache_action == 'clear cache then end workflow'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          ids="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | .id' || true)"
+          for id in $ids; do
+            [ -z "$id" ] && continue
+            gh api --method DELETE \
+              "repos/${GITHUB_REPOSITORY}/actions/caches/${id}" >/dev/null || true
+          done
+          echo "Cleared all caches at start"
+
+      - name: End workflow after clearing cache
+        if: github.event.inputs.cache_action == 'clear cache then end workflow'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          echo "Cache cleared, ending workflow"
+          gh run cancel ${{ github.run_id }} --repo ${{ github.repository }} || true
+          exit 0
+
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -171,3 +209,20 @@ jobs:
         run: |
           xvfb-run -a ctest --test-dir build-ci --output-on-failure \
             --parallel 4 --timeout 120
+
+      - name: Clear caches at end of workflow
+        if: always() && github.event.inputs.cache_action == 'clear cache then end workflow'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          ids="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | .id' || true)"
+          for id in $ids; do
+            [ -z "$id" ] && continue
+            gh api --method DELETE \
+              "repos/${GITHUB_REPOSITORY}/actions/caches/${id}" >/dev/null || true
+          done
+          echo "Cleared all caches at end"

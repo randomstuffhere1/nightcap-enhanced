@@ -18,6 +18,15 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      cache_action:
+        description: 'Cache action'
+        required: false
+        type: choice
+        options:
+          - 'clear cache on workflow start'
+          - 'clear cache then end workflow'
+        default: ''
 
 permissions:
   contents: read
@@ -34,9 +43,39 @@ jobs:
     name: Check for new commits
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      actions: write
     outputs:
       build: ${{ steps.decide.outputs.build }}
     steps:
+      - name: Clear caches on workflow start
+        if: github.event.inputs.cache_action == 'clear cache on workflow start' || github.event.inputs.cache_action == 'clear cache then end workflow'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          ids="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | .id' || true)"
+          for id in $ids; do
+            [ -z "$id" ] && continue
+            gh api --method DELETE \
+              "repos/${GITHUB_REPOSITORY}/actions/caches/${id}" >/dev/null || true
+          done
+          echo "Cleared all caches at start"
+
+      - name: End workflow after clearing cache
+        if: github.event.inputs.cache_action == 'clear cache then end workflow'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          echo "Cache cleared, ending workflow"
+          gh run cancel ${{ github.run_id }} --repo ${{ github.repository }} || true
+          exit 0
+
       - name: Compare HEAD against the published nightly tag
         id: decide
         shell: bash
@@ -69,6 +108,7 @@ jobs:
     uses: ./.github/workflows/build-packages.yml
     with:
       channel: nightly
+      cache_action: ${{ inputs.cache_action }}
     permissions:
       contents: read
       # The ccache action drops the older caches of its scope, which needs
