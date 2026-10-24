@@ -16,6 +16,57 @@ Release notes on GitHub are taken from the matching section here.
   `use_new_text_renderer` (let the client draw its own text instead of the host text overlay). Every one is
   absent by default, so a payload nobody measured keeps today's behavior, and each can be overridden with
   `MOCKTAIL_SWAPCHAIN_FIXUP`, `MOCKTAIL_SHADER_FIXUPS` and `MOCKTAIL_NEW_TEXT_RENDERER`.
+- An optional popup shows the game server's location for a few seconds after each join
+  (`overlay.location`), and `overlay.location_offset` moves it down. A separate performance
+  overlay keeps your frame rate (`overlay.fps`) and ping (`overlay.ping`) on screen, and
+  `overlay.position` moves it to a corner or edge. All are in the settings window under Graphics,
+  and changes apply while you play, without a restart.
+- Advanced settings can clear Roblox's downloaded game assets, and show how much space they use.
+  Settings and sign-in are kept. With Fleasion, `integrations.fleasion.clear_cache_on_launch`
+  clears them at every launch so new replacements load. A join from the website closes an open
+  Nightcap first, so the clear still runs.
+
+### Fixed
+
+- Fleasion replacements load again. With `integrations.fleasion.enabled`, Nightcap sets
+  `FFlagAssetProviderUseAssetDeliveryV3` to `False`, so Roblox requests assets through the endpoint
+  Fleasion rewrites. A value in `~/.config/mocktail/fflags.json` still wins.
+- A frame-rate limit of `unlimited` or above 240 now goes past 240 FPS. Nightcap writes it to
+  Roblox's own frame-rate cap, since Roblox stops `DFIntTaskSchedulerTargetFps` at 240.
+- A new install now gets Roblox's current menus and in-game UI on its first launch instead of its third.
+  Roblox downloads them signed out but does not record them, so Nightcap records them and restarts once,
+  a few seconds in.
+- Each install now sends Roblox its own random Android device ID instead of `0000000000000000`.
+- The Flatpak no longer fails to install Roblox on NVIDIA under Wayland with "graphics canary exited with
+  status 139". NVIDIA's Vulkan driver crashed when Roblox closed its graphics, so every Roblox version
+  failed its startup test.
+- Holding right click over a button, the leaderboard, or the Roblox menu no longer freezes the cursor.
+  The cursor now only holds still while the camera turns, as on Windows.
+- Shift lock no longer lets the cursor wander onto buttons when a game turns its lock off and on quickly.
+  Nightcap keeps the pointer captured until the lock has stayed off for a few frames. Leaving shift lock
+  or first person leaves the cursor at the center of the window, as on Windows.
+- The app menu entry opens Nightcap again on NixOS. The Nix package wrote the install path twice into
+  the `.desktop` file, so the menu entry pointed at a file that does not exist.
+
+### Changed
+
+- ETC2 textures now decode on the graphics card instead of the CPU, so loading them no longer takes CPU
+  time from the game. Small upscaled textures and texture overrides still decode on the CPU. A self-test
+  at startup falls back to the CPU if the card's output differs, and `MOCKTAIL_ETC2_GPU_DECODE=0` turns
+  it off.
+
+
+## [0.4.0] - 2026-10-18
+
+### Added
+
+- Added a settings window. Open it from the app menu (right-click Nightcap, then Settings) or with
+  `mocktail --settings`. It changes `config.yaml` and `fflags.json` for you, keeps your comments, and does
+  not save a value Nightcap could not start with. Changes apply the next time Nightcap starts. If Nightcap
+  is open when you change something, the window offers to restart it for you, with the same options and
+  environment it was started with. It opens on the main menu. Every `config.yaml` setting has a row,
+  including the device, the window size, the proxy, Fleasion and the update source. A setting you changed
+  from its default gets a button that resets it.
 - An asset overlay folder, `~/.local/share/mocktail/asset_overlay`. A file there replaces the file Roblox
   ships at the same path, such as a cursor, a font or a sky texture, and it stays in place when Roblox
   updates. The layout matches Sober's `asset_overlay` folder. `MOCKTAIL_ASSET_OVERLAY_DIR` moves it. Thanks to
@@ -36,33 +87,19 @@ Release notes on GitHub are taken from the matching section here.
 - `MOCKTAIL_ASSET_TRACE=1` now also prints the files Roblox asks for and does not get, as `[asset] miss`.
 - Arch Linux: `nightcap-git` is on the AUR and builds the current `main` branch. Thanks to @dim-ghub, who
   maintains it.
-- The nightly prerelease now has a `.deb`, `.rpm` and pacman package next to the AppImage, each with a
-  `.sha256`. They are versioned after the last release, such as `0.3.4+r29.g112f5ab`, so they upgrade over
-  it and over each other. The notes list the commits since the last nightly. The tagged release builds the
-  same packages from the same workflow.
+- The nightly `continuous` prerelease now has a `.deb`, `.rpm` and pacman package next to the AppImage,
+  each with a `.sha256`. They are versioned after the last release, such as `0.3.4+r29.g112f5ab`, so they
+  upgrade over it and over each other. The notes list the commits since the last nightly.
 - The log now names each Roblox Java call that Nightcap has no handler for, once per call, as
   `[JNI] no handler for <class>.<method><signature>`. This shows what a new Roblox version needs.
 - `--profile` traces now show how much GPU memory decoded ETC2 textures take, as the `emulated texture (MB)`
   and `compressed texture (MB)` counters. `scripts/summarize_profile_trace.py` prints the peak of each.
-- An optional popup shows the game server's location for a few seconds after each join (`overlay.location`),
-  and `overlay.location_offset` moves it down. A separate performance overlay keeps your frame rate
-  (`overlay.fps`) and ping (`overlay.ping`) on screen, and `overlay.position` moves it to a corner or edge.
-  All are in the settings window under Graphics, and changes apply while you play, without a restart.
-- Advanced settings can clear Roblox's downloaded game assets, and show how much space they use. Settings and
-  sign-in are kept. With Fleasion, `integrations.fleasion.clear_cache_on_launch` clears them at every launch
-  so new replacements load. A join from the website closes an open Nightcap first, so the clear still runs.
 - A fixed proxy can be SOCKS5 and can have a login: `network.proxy_scheme`, `network.proxy_username` and
-  `network.proxy_password` in `config.yaml`, or the Proxy rows in the settings window, where the password is
-  hidden as you type. It is saved as plain text in `config.yaml`. From upstream mocktail.
+  `network.proxy_password` in `config.yaml`, or the Proxy rows in the settings window, where the password
+  is hidden as you type. It is saved as plain text in `config.yaml`. From upstream mocktail.
 
 ### Fixed
 
-- Fleasion replacements load again. With `integrations.fleasion.enabled`, Nightcap sets
-  `FFlagAssetProviderUseAssetDeliveryV3` to `False`, so Roblox requests assets through the endpoint
-  Fleasion rewrites. A value in `~/.config/mocktail/fflags.json` still wins.
-- A frame-rate limit of `unlimited` or above 240 now goes past 240 FPS. Nightcap writes it to
-  Roblox's own frame-rate cap, since Roblox stops `DFIntTaskSchedulerTargetFps` at 240.
-- Each install now sends Roblox its own random Android device ID instead of `0000000000000000`.
 - Joining a game from a website link while already in a game no longer freezes Nightcap. It leaves the
   current game and joins the new one, and leaving that game returns to the home screen.
 - Game links opened from a browser are no longer rejected when they ask for any public server, or when
@@ -70,13 +107,6 @@ Release notes on GitHub are taken from the matching section here.
 - The loading window no longer gets a dock icon of its own. It now shows under Nightcap's icon.
 - The browser tracker ID no longer fails with HTTP 500 on almost every launch. Nightcap reuses the ID
   Roblox already saved, asks for one only when there is none, and keeps its cookie out of your sign-in file.
-- The Flatpak no longer fails to install Roblox on NVIDIA under Wayland with "graphics canary exited with
-  status 139". NVIDIA's Vulkan driver crashed when Roblox closed its graphics, so every Roblox version failed
-  its startup test.
-- Holding right click over a button, the leaderboard, or the Roblox menu no longer freezes the cursor. The
-  cursor now only holds still while the camera turns, as on Windows.
-- The app menu entry opens Nightcap again on NixOS. The Nix package wrote the install path twice into the
-  `.desktop` file, so the menu entry pointed at a file that does not exist.
 - After you alt-tab away, moving the mouse over the game no longer turns the camera. Click in the game or
   press a key to take control again.
 - The `.deb` package now finds its sign-in, update and error helpers, which Debian installs under
@@ -87,29 +117,6 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Changed
 
-- The nightly prerelease is built on every push to `main` instead of on a daily schedule. GitHub turns the
-  scheduled workflows of an inactive repository off, so the schedule could silently stop and leave the
-  prerelease stale. A push whose commit already carries the `nightly` tag builds nothing.
-- The package builds share a ccache between the runs, so a build that follows the previous one starts warm
-  instead of compiling the whole tree again. A cache that is six hours old is dropped rather than used.
-- This fork's own `integrations.server_location_indicator` is retired. The overlay does the same job and shows
-  more: the server's region after a join, your frame rate and your ping. The old switch now turns on
-  `overlay.location`, and it is kept as a legacy alias, so a `config.yaml` that still carries it keeps loading.
-  The overlay's own rows are in the settings window under Graphics, and they apply while you play.
-- The server location notice now says where the server is and where the answer came from: `Server location:
-  Ashburn, Virginia, US (ipinfo.io)`, or the data center's own code, `Server location: IAD (Roblox)`. The
-  address lookup names the city, its region and the country, not the city and a country code. Roblox is asked
-  first when the host knows which server it joined, so a session often never leaves Roblox's own servers, and
-  only the server's address is ever sent to a third party.
-- The server location notice waits for the game to present steadily before it fades. A fade that starts on a
-  stutter is seen as a jump rather than a transition, which reads as the notice blinking away while the game
-  catches up, so the notice stays up until the frame rate settles.
-- Replaced the settings window with a fuller one that edits `config.yaml` in place, keeping your comments,
-  order and line endings, instead of writing a separate `config.ui.yaml` that layered over it. Every
-  setting has a row, including the device identity, the window size, the proxy, Fleasion, the update source
-  and the Discord text and images, and the Advanced page edits `fflags.json` and opens the config folder. A
-  value Nightcap could not load is not saved, a setting changed from its default gets a reset button, and a
-  running Nightcap is offered a restart with the same options and environment it was started with.
 - The home screen and avatar editor have fewer long frames. PC profiles compile the app's menu scripts to
   native code and turn this off while you are in a game, so games run as before. Set
   `FFlagDebugLuauCodegenAll` in `fflags.json` to choose it yourself.
@@ -117,25 +124,8 @@ Release notes on GitHub are taken from the matching section here.
   memory for each block of sound it plays.
 - Less hitching while textures load in. Freeing GPU memory no longer waits for texture decodes that do not
   read it. In Blade Ball the worst `vkFreeMemory` fell from 31ms to 3ms.
-- ETC2 textures now decode on the graphics card instead of the CPU, so loading them no longer takes CPU
-  time from the game. Small upscaled textures and texture overrides still decode on the CPU. A self-test
-  at startup falls back to the CPU if the card's output differs, and `MOCKTAIL_ETC2_GPU_DECODE=0` turns
-  it off.
 - Nightcap starts about 0.2s faster. It no longer re-hashes an unchanged Roblox library twice on every
   launch, and the browser tracker no longer waits on a web request.
-- Building needs a Rust toolchain, 1.83 or newer, because the texture hot kernels moved to `rust/`. The
-  crates are vendored under `rust/vendor`, so no build path reaches the network for them, and
-  `rust/rust-toolchain.toml` picks the channel. Every packaging path declares the toolchain it needs,
-  including `org.freedesktop.Sdk.Extension.rust-stable` for the Flatpak.
-
-### Fixed
-
-- Nightcap no longer fails to start on a saved Roblox session the server will not accept. A cookie whose
-  request never got an answer is now retired like a rejected one instead of being retried forever, and a
-  cookie stored with an empty value is dropped by name rather than mistaken for a session that was never
-  saved. An explicit cookie file or `MOCKTAIL_COOKIE` still fails closed.
-- Closing the game window no longer sits in `window closed, shutting down` for several seconds. The server
-  location lookup now stops before it is joined rather than after, and notices it while it waits.
 
 ## [0.3.4] - 2026-10-11
 
@@ -481,7 +471,8 @@ First Nightcap release, forked from komaruworld/mocktail.
 - The FMOD output-device bridge is optional, so the updater no longer fails without it.
 - The AppImage build no longer fails on stale checksums for the slimmed Arch packages.
 
-[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/CoderDayton/nightcap/releases/tag/v0.4.0
 [0.3.4]: https://github.com/CoderDayton/nightcap/releases/tag/v0.3.4
 [0.3.3]: https://github.com/CoderDayton/nightcap/releases/tag/v0.3.3
 [0.3.2]: https://github.com/CoderDayton/nightcap/releases/tag/v0.3.2
