@@ -15,5 +15,9 @@ bool DirectVulkanWindowRequiresInitialSync(std::string_view video_driver) {
   return video_driver == "wayland";
 }
 
+bool SupportsExclusiveFullscreen(std::string_view video_driver) {
+  return video_driver != "wayland";
+}
+
 }  // namespace window
 }  // namespace mocktail

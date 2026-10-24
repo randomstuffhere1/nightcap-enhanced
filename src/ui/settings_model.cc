@@ -635,6 +635,16 @@ const std::vector<SettingsPage>& SettingsPages() {
                  {},
                  "false",
                  {}},
+                {"window.exclusive_fullscreen",
+                 "Exclusive fullscreen",
+                 "Use a native display mode in fullscreen instead of "
+                 "borderless. It can cut input lag on X11 by bypassing the "
+                 "compositor, but switching takes longer and Wayland stays "
+                 "borderless.",
+                 SettingKind::kToggle,
+                 {},
+                 "false",
+                 {}},
             }},
        }},
       {"input",
@@ -675,6 +685,21 @@ const std::vector<SettingsPage>& SettingsPages() {
                  {},
                  "false",
                  {}},
+            }},
+           {"Polling",
+            {
+                {"input.pump_hz",
+                 "Input polling rate",
+                 "How often Nightcap checks for mouse and keyboard events, in "
+                 "Hz. 240 matches Roblox's highest frame rate. Lower it to "
+                 "use less CPU; raise it for a display above 240 Hz.",
+                 SettingKind::kNumber,
+                 {},
+                 "240",
+                 {},
+                 60,
+                 360,
+                 10},
             }},
            {"Device",
             {

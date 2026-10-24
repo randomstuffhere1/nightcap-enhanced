@@ -10,6 +10,12 @@ Release notes on GitHub are taken from the matching section here.
 - `window.close_on_leave` closes Nightcap when you leave an experience instead of leaving it open on the
   Roblox home screen. Switching servers because you joined another place is not leaving, and a leave the
   runtime asked for still exits cleanly.
+- `window.exclusive_fullscreen` switches to a native display mode in fullscreen instead of the
+  compositor's borderless path, which can cut input lag on X11. It is off by default, and Wayland stays
+  borderless.
+- `input.pump_hz` sets how often Nightcap checks for mouse and keyboard events, from 60 to 360. The
+  default of 240 matches Roblox's highest frame rate; lower it to save CPU, or raise it for a display
+  above 240 Hz. Both options are in the settings window.
 - A compatibility profile can now declare payload-scoped graphics fixups: `swapchain_fixup` (a 0 to 3
   ladder, from clamping the swapchain extent to retrying a minimal FIFO swapchain), `shader_fixups` (prefer
   the host-keyed pipeline cache over the payload's own seed, and keep the shader entrypoints wrapped), and

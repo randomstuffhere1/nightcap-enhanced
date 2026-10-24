@@ -281,6 +281,12 @@ You can also edit the file by hand. Useful options:
   a desktop platform.
 - `window.close_on_leave: true` to close Nightcap when you leave an experience
   instead of staying on the Roblox home screen.
+- `window.exclusive_fullscreen: true` to use a native display mode in
+  fullscreen instead of the compositor's borderless path. It can cut input lag
+  on X11, but switching takes longer, and Wayland stays borderless.
+- `input.pump_hz` to set how often Nightcap checks for mouse and keyboard
+  events, from 60 to 360. The default of 240 matches Roblox's highest frame
+  rate; lower it to save CPU, or raise it for a display above 240 Hz.
 - `overlay.location: true` to show which region the game server is in after you
   join, `overlay.fps` and `overlay.ping` for the performance overlay, and
   `overlay.position` to move it to a corner.

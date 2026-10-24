@@ -7,6 +7,8 @@
 namespace mocktail {
 namespace window {
 
+inline constexpr uint64_t kMinimumInputPumpHz = 60;
+inline constexpr uint64_t kMaximumInputPumpHz = 360;
 inline constexpr uint64_t kProductionInputPumpHz = 240;
 inline constexpr uint64_t kProductionInputPumpIntervalNs =
     1000000000ULL / kProductionInputPumpHz;
@@ -20,6 +22,15 @@ class InputPumpPacer final {
       uint64_t interval_ns = kProductionInputPumpIntervalNs)
       : interval_ns_(interval_ns) {}
 
+  // Applies a configured rate. A zero interval disables pacing, which is what
+  // the unthrottled-present path does separately.
+  void SetIntervalNs(uint64_t interval_ns) {
+    interval_ns_ = interval_ns;
+    next_deadline_ns_ = 0;
+  }
+
+  uint64_t interval_ns() const { return interval_ns_; }
+
   uint64_t DelayBeforeNextPump(uint64_t now_ns) {
     if (interval_ns_ == 0) {
       return 0;
@@ -27,7 +38,7 @@ class InputPumpPacer final {
     // A tick that already missed (or met) the deadline must not sleep. Sleeping
     // a full interval after a late engine/present frame adds 4ms on top of
     // vsync and caps gameplay below refresh. Rebase so the next idle spin is
-    // still limited to 240 Hz.
+    // still limited to the configured rate.
     if (next_deadline_ns_ == 0 || now_ns >= next_deadline_ns_) {
       next_deadline_ns_ = AddSaturating(now_ns, interval_ns_);
       return 0;
@@ -45,7 +56,7 @@ class InputPumpPacer final {
     return value > maximum - increment ? maximum : value + increment;
   }
 
-  const uint64_t interval_ns_;
+  uint64_t interval_ns_;
   uint64_t next_deadline_ns_ = 0;
 };
 

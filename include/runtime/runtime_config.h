@@ -37,6 +37,10 @@ struct WindowConfig {
   // Nightcap open on the Roblox home screen.
   bool close_on_leave = false;
   bool close_on_leave_valid = true;
+  // Use an exclusive display mode in fullscreen instead of the compositor's
+  // borderless path. Wayland has no exclusive mode and stays borderless.
+  bool exclusive_fullscreen = false;
+  bool exclusive_fullscreen_valid = true;
 };
 
 // Roblox's own graphics quality level, forwarded to the client settings.
@@ -76,6 +80,11 @@ struct InputCapabilityConfig {
   // Have the desktop draw the cursor pictures Roblox would draw into the
   // game, a game's own included. The mouse-lock cursor stays Roblox's.
   bool hardware_cursor = false;
+  // How often the host pumps SDL input events, in Hz. The default matches
+  // Roblox's highest scheduler frame rate; lower values trade input latency
+  // for CPU time.
+  std::uint32_t pump_hz = 240;
+  bool pump_hz_valid = true;
 };
 
 enum class OverlayPosition {

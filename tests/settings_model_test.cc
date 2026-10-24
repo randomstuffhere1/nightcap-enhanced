@@ -141,7 +141,8 @@ TEST_F(SettingsModelTest, EveryConfigKeyHasARow) {
            "performance.gamemode", "performance.mangohud",
            "audio.output_device", "audio.input_device",
            "window.width", "window.height", "window.title", "window.high_dpi",
-           "input.raw_mouse", "input.system_cursor", "input.hardware_cursor",
+           "window.exclusive_fullscreen", "input.raw_mouse",
+           "input.system_cursor", "input.hardware_cursor", "input.pump_hz",
            "overlay.location", "overlay.location_offset", "overlay.fps",
            "overlay.ping", "overlay.position",
            "network.use_system_proxy", "network.proxy_scheme",
@@ -1138,6 +1139,8 @@ TEST_F(SettingsModelTest, NumberRowsKeepToTheRangeTheLoaderAccepts) {
   EXPECT_EQ(Find("integrations.fleasion.proxy_port").minimum, 1);
   EXPECT_EQ(Find("integrations.fleasion.proxy_port").maximum, 65535);
   EXPECT_EQ(Find("performance.memory_limit_mb").minimum, 0);
+  EXPECT_EQ(Find("input.pump_hz").minimum, 60);
+  EXPECT_EQ(Find("input.pump_hz").maximum, 360);
 }
 
 TEST_F(SettingsModelTest, TheNewRowsReachTheLoadedConfig) {
@@ -1146,6 +1149,9 @@ TEST_F(SettingsModelTest, TheNewRowsReachTheLoadedConfig) {
   ASSERT_TRUE(document.Load(&error)) << error;
   ASSERT_TRUE(document.Set("window.width", "1600", &error)) << error;
   ASSERT_TRUE(document.SetText("window.title", "Nightcap", &error)) << error;
+  ASSERT_TRUE(document.Set("window.exclusive_fullscreen", "true", &error))
+      << error;
+  ASSERT_TRUE(document.Set("input.pump_hz", "360", &error)) << error;
   ASSERT_TRUE(document.Set("runtime.headless", "true", &error)) << error;
   ASSERT_TRUE(document.Set("network.use_system_proxy", "true", &error))
       << error;
@@ -1162,6 +1168,8 @@ TEST_F(SettingsModelTest, TheNewRowsReachTheLoadedConfig) {
   ASSERT_TRUE(loaded) << loaded.error;
   EXPECT_EQ(loaded.config.window().width, 1600);
   EXPECT_EQ(loaded.config.window().title, "Nightcap");
+  EXPECT_TRUE(loaded.config.window().exclusive_fullscreen);
+  EXPECT_EQ(loaded.config.input_capabilities().pump_hz, 360U);
   EXPECT_TRUE(loaded.config.headless());
   EXPECT_TRUE(loaded.config.use_system_proxy());
   EXPECT_EQ(loaded.config.fleasion_proxy_mode(), "hosts");

@@ -217,16 +217,18 @@ constexpr std::array<Field, 5> kPerformanceFields{
     Field{"performance.mangohud", "MANGOHUD", FieldKind::kBooleanDigits},
 };
 
-constexpr std::array<Field, 4> kWindowAndDeviceFields{
+constexpr std::array<Field, 5> kWindowAndDeviceFields{
     Field{"audio.output_device", "MOCKTAIL_AUDIO_OUTPUT_DEVICE",
           FieldKind::kBoundedRequiredString, 0, 512},
     Field{"audio.input_device", "MOCKTAIL_AUDIO_INPUT_DEVICE",
           FieldKind::kBoundedRequiredString, 0, 512},
     Field{"window.width", "MOCKTAIL_WIN_WIDTH", FieldKind::kPositiveInt},
     Field{"window.height", "MOCKTAIL_WIN_HEIGHT", FieldKind::kPositiveInt},
+    Field{"window.exclusive_fullscreen", "MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN",
+          FieldKind::kBooleanDigits},
 };
 
-constexpr std::array<Field, 5> kInputFields{
+constexpr std::array<Field, 6> kInputFields{
     Field{"window.high_dpi", "MOCKTAIL_WIN_HIGH_DPI",
           FieldKind::kBooleanDigits},
     Field{"window.close_on_leave", "MOCKTAIL_WIN_CLOSE_ON_LEAVE",
@@ -234,6 +236,8 @@ constexpr std::array<Field, 5> kInputFields{
     Field{"input.touch_enabled", "MOCKTAIL_TOUCH_MODE",
           FieldKind::kBooleanOnOff},
     Field{"input.raw_mouse", "MOCKTAIL_RAW_MOUSE", FieldKind::kBooleanOnOff},
+    Field{"input.pump_hz", "MOCKTAIL_INPUT_PUMP_HZ",
+          FieldKind::kBoundedUnsigned, 60, 360},
     Field{"compatibility.desktop_playability",
           "MOCKTAIL_DESKTOP_PLAYABILITY", FieldKind::kBooleanDigits},
 };
@@ -1045,6 +1049,10 @@ RuntimeConfigLoadResult LoadRuntimeConfig(
     result.error = "window high-DPI policy is invalid";
   } else if (!result.config.window().close_on_leave_valid) {
     result.error = "window close-on-leave policy is invalid";
+  } else if (!result.config.window().exclusive_fullscreen_valid) {
+    result.error = "window exclusive-fullscreen policy is invalid";
+  } else if (!result.config.input_capabilities().pump_hz_valid) {
+    result.error = "input pump rate must be 60 to 360 Hz";
   } else if (result.config.vsync_mode() != "auto" &&
              result.config.vsync_mode() != "on" &&
              result.config.vsync_mode() != "off") {
@@ -1177,6 +1185,9 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
                           config.window().high_dpi ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_WIN_CLOSE_ON_LEAVE",
                           config.window().close_on_leave ? "1" : "0", error) &&
+      SetEnvironmentValue("MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN",
+                          config.window().exclusive_fullscreen ? "1" : "0",
+                          error) &&
       SetEnvironmentValue(
           "MOCKTAIL_TOUCH_MODE",
           config.input_capabilities().touch_enabled ? "on" : "off", error) &&
@@ -1195,6 +1206,9 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue(
           "MOCKTAIL_HARDWARE_CURSOR",
           config.input_capabilities().hardware_cursor ? "on" : "off", error) &&
+      SetEnvironmentValue("MOCKTAIL_INPUT_PUMP_HZ",
+                          std::to_string(config.input_capabilities().pump_hz),
+                          error) &&
       SetEnvironmentValue("MOCKTAIL_DESKTOP_PLAYABILITY",
                           config.desktop_playability() ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",

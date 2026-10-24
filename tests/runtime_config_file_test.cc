@@ -943,6 +943,90 @@ window:
   EXPECT_FALSE(defaults.window().close_on_leave);
 }
 
+TEST(RuntimeConfigFileTest, LoadsAndExportsInputPumpRate) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+input:
+  pump_hz: 360
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_EQ(loaded.config.input_capabilities().pump_hz, 360U);
+  EXPECT_TRUE(loaded.config.input_capabilities().pump_hz_valid);
+
+  unsetenv("MOCKTAIL_INPUT_PUMP_HZ");
+  std::string error;
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(loaded.config, &error)) << error;
+  ASSERT_NE(getenv("MOCKTAIL_INPUT_PUMP_HZ"), nullptr);
+  EXPECT_STREQ(getenv("MOCKTAIL_INPUT_PUMP_HZ"), "360");
+  unsetenv("MOCKTAIL_INPUT_PUMP_HZ");
+
+  // Absent keeps the 240 Hz cadence that matched Roblox's scheduler cap.
+  const RuntimeConfig defaults =
+      RuntimeConfig::FromEnvironment(MapEnvironment());
+  EXPECT_EQ(defaults.input_capabilities().pump_hz, 240U);
+}
+
+TEST(RuntimeConfigFileTest, RejectsInputPumpRateOutsideTheSupportedRange) {
+  TemporaryDirectory temporary;
+  for (const char* rate : {"59", "361", "fast", "0"}) {
+    SCOPED_TRACE(rate);
+    const std::filesystem::path file = temporary.Write(
+        std::string("version: 1\ninput:\n  pump_hz: ") + rate + "\n");
+    const RuntimeConfigLoadResult loaded =
+        LoadRuntimeConfig(MapEnvironment(), file);
+    EXPECT_FALSE(loaded);
+    EXPECT_NE(loaded.error.find("input.pump_hz"), std::string::npos);
+  }
+}
+
+TEST(RuntimeConfigFileTest, LoadsAndExportsExclusiveFullscreen) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+window:
+  exclusive_fullscreen: true
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_TRUE(loaded.config.window().exclusive_fullscreen);
+
+  unsetenv("MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN");
+  std::string error;
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(loaded.config, &error)) << error;
+  ASSERT_NE(getenv("MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN"), nullptr);
+  EXPECT_STREQ(getenv("MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN"), "1");
+  unsetenv("MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN");
+
+  // Borderless remains the default, so a config that omits the key keeps it.
+  const RuntimeConfig defaults =
+      RuntimeConfig::FromEnvironment(MapEnvironment());
+  EXPECT_FALSE(defaults.window().exclusive_fullscreen);
+}
+
+TEST(RuntimeConfigFileTest, RejectsInvalidExclusiveFullscreenPolicy) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+window:
+  exclusive_fullscreen: always
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  EXPECT_FALSE(loaded);
+  EXPECT_NE(loaded.error.find("window.exclusive_fullscreen"),
+            std::string::npos);
+}
+
 TEST(RuntimeConfigFileTest, ExportsTheOverlaySettings) {
   TemporaryDirectory temporary;
   const std::filesystem::path file = temporary.Write(R"yaml(

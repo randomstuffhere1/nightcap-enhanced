@@ -46,10 +46,14 @@ TEST(RuntimeConfigTest, UsesSupportedDefaults) {
   EXPECT_EQ(config.window().title, "Roblox");
   EXPECT_FALSE(config.window().high_dpi);
   EXPECT_TRUE(config.window().high_dpi_valid);
+  EXPECT_FALSE(config.window().exclusive_fullscreen);
+  EXPECT_TRUE(config.window().exclusive_fullscreen_valid);
   EXPECT_EQ(config.theme_mode(), "roblox");
   EXPECT_FALSE(config.input_capabilities().touch_enabled);
   EXPECT_TRUE(config.input_capabilities().mouse_enabled);
   EXPECT_TRUE(config.input_capabilities().keyboard_enabled);
+  EXPECT_EQ(config.input_capabilities().pump_hz, 240U);
+  EXPECT_TRUE(config.input_capabilities().pump_hz_valid);
   EXPECT_EQ(config.device_profile().name, "pc-windows-11");
   EXPECT_EQ(config.device_profile().cache_key, "pc-windows-11");
   EXPECT_EQ(config.device_profile().display_name, "Windows 11 PC");
@@ -106,6 +110,8 @@ TEST(RuntimeConfigTest, ReadsTypedRuntimeValues) {
       {"MOCKTAIL_WIN_HEIGHT", "1080"},
       {"MOCKTAIL_WIN_TITLE", "Mocktail Test"},
       {"MOCKTAIL_WIN_HIGH_DPI", "true"},
+      {"MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN", "true"},
+      {"MOCKTAIL_INPUT_PUMP_HZ", "360"},
       {"MOCKTAIL_THEME", "system"},
       {"MOCKTAIL_TOUCH_MODE", "on"},
       {"MOCKTAIL_DESKTOP_PLAYABILITY", "0"},
@@ -141,8 +147,12 @@ TEST(RuntimeConfigTest, ReadsTypedRuntimeValues) {
   EXPECT_EQ(config.window().title, "Mocktail Test");
   EXPECT_TRUE(config.window().high_dpi);
   EXPECT_TRUE(config.window().high_dpi_valid);
+  EXPECT_TRUE(config.window().exclusive_fullscreen);
+  EXPECT_TRUE(config.window().exclusive_fullscreen_valid);
   EXPECT_EQ(config.theme_mode(), "system");
   EXPECT_TRUE(config.input_capabilities().touch_enabled);
+  EXPECT_EQ(config.input_capabilities().pump_hz, 360U);
+  EXPECT_TRUE(config.input_capabilities().pump_hz_valid);
   EXPECT_FALSE(config.desktop_playability());
   EXPECT_FALSE(config.roblox_http_user_agent().has_value());
   EXPECT_EQ(config.frame_rate().fixed_fps, 144);
@@ -395,6 +405,23 @@ TEST(RuntimeConfigTest, RejectsUnsafeWindowSizes) {
 
   EXPECT_EQ(config.window().width, 1280);
   EXPECT_EQ(config.window().height, 720);
+}
+
+TEST(RuntimeConfigTest, RejectsInputPumpRatesOutsideTheSupportedRange) {
+  for (const char* rate : {"59", "361", "0", "fast", "240.0", "-240"}) {
+    SCOPED_TRACE(rate);
+    const RuntimeConfig config = RuntimeConfig::FromEnvironment(
+        MapEnvironment({{"MOCKTAIL_INPUT_PUMP_HZ", rate}}));
+    EXPECT_FALSE(config.input_capabilities().pump_hz_valid);
+    EXPECT_EQ(config.input_capabilities().pump_hz, 240U);
+  }
+}
+
+TEST(RuntimeConfigTest, RejectsMalformedExclusiveFullscreenPolicy) {
+  const RuntimeConfig config = RuntimeConfig::FromEnvironment(
+      MapEnvironment({{"MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN", "sometimes"}}));
+  EXPECT_FALSE(config.window().exclusive_fullscreen_valid);
+  EXPECT_FALSE(config.window().exclusive_fullscreen);
 }
 
 TEST(RuntimeConfigTest, RejectsUnsafeAudioOutputDevice) {

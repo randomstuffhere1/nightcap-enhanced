@@ -60,6 +60,22 @@ TEST(InputPumpPacerTest, ResetStartsAFreshCadence) {
   EXPECT_EQ(pacer.DelayBeforeNextPump(101000000), kInterval - 1000000);
 }
 
+TEST(InputPumpPacerTest, SetIntervalRestartsAtTheConfiguredRate) {
+  InputPumpPacer pacer;
+  EXPECT_EQ(pacer.interval_ns(), kProductionInputPumpIntervalNs);
+
+  pacer.SetIntervalNs(1000000000ULL / kMaximumInputPumpHz);
+  EXPECT_EQ(pacer.interval_ns(), 2777777U);
+  EXPECT_EQ(pacer.DelayBeforeNextPump(1000000), 0U);
+  EXPECT_EQ(pacer.DelayBeforeNextPump(2000000), 1777777U);
+
+  pacer.SetIntervalNs(1000000000ULL / kMinimumInputPumpHz);
+  EXPECT_EQ(pacer.interval_ns(), 16666666U);
+  // The setter also drops the old deadline, so the first tick after a change
+  // does not sleep off a deadline from the previous rate.
+  EXPECT_EQ(pacer.DelayBeforeNextPump(2000000), 0U);
+}
+
 }  // namespace
 }  // namespace window
 }  // namespace mocktail

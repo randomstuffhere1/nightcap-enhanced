@@ -18,6 +18,10 @@ SDL_WindowFlags ApplyHighPixelDensityWindowFlag(SDL_WindowFlags flags,
 // X11 window is already usable.
 bool DirectVulkanWindowRequiresInitialSync(std::string_view video_driver);
 
+// Exclusive fullscreen needs a backend that can switch display modes. Wayland
+// has no equivalent, so a request there stays borderless.
+bool SupportsExclusiveFullscreen(std::string_view video_driver);
+
 }  // namespace window
 }  // namespace mocktail
 

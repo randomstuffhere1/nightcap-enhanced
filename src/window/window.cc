@@ -284,6 +284,62 @@ bool IsWaylandVideoDriver() {
   return driver != nullptr && std::strcmp(driver, "wayland") == 0;
 }
 
+bool ExclusiveFullscreenRequested() {
+  static const bool requested =
+      IsEnabledEnv("MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN");
+  return requested;
+}
+
+// Selects the mode SDL will use the next time the window enters fullscreen.
+// A refusal keeps today's borderless path instead of failing the fullscreen
+// request, which is what a compositor or driver without mode switching needs.
+bool ApplyFullscreenModePolicy(SDL_Window* window, bool fullscreen) {
+  if (window == nullptr) {
+    return false;
+  }
+  if (!fullscreen || !ExclusiveFullscreenRequested()) {
+    return SDL_SetWindowFullscreenMode(window, nullptr);
+  }
+  const char* driver = SDL_GetCurrentVideoDriver();
+  if (!SupportsExclusiveFullscreen(driver != nullptr ? driver : "")) {
+    fprintf(stderr,
+            "  [fullscreen] exclusive mode is unavailable on %s; using "
+            "borderless\n",
+            driver != nullptr ? driver : "this video driver");
+    return SDL_SetWindowFullscreenMode(window, nullptr);
+  }
+  const SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+  const SDL_DisplayMode* desktop =
+      display != 0 ? SDL_GetDesktopDisplayMode(display) : nullptr;
+  if (desktop == nullptr) {
+    fprintf(stderr,
+            "  [fullscreen] no desktop display mode to switch to: %s; using "
+            "borderless\n",
+            SDL_GetError());
+    return SDL_SetWindowFullscreenMode(window, nullptr);
+  }
+  // SDL may invalidate the pointer once the mode changes, so keep a copy.
+  const SDL_DisplayMode mode = *desktop;
+  if (!SDL_SetWindowFullscreenMode(window, &mode)) {
+    fprintf(stderr,
+            "  [fullscreen] exclusive mode %dx%d@%.2f Hz was rejected: %s; "
+            "using borderless\n",
+            mode.w, mode.h, static_cast<double>(mode.refresh_rate),
+            SDL_GetError());
+    return SDL_SetWindowFullscreenMode(window, nullptr);
+  }
+  fprintf(stderr, "  [fullscreen] exclusive mode %dx%d@%.2f Hz\n", mode.w,
+          mode.h, static_cast<double>(mode.refresh_rate));
+  return true;
+}
+
+void ApplyStartupFullscreenMode(SDL_Window* window,
+                                bool fullscreen_at_creation) {
+  if (window != nullptr && fullscreen_at_creation) {
+    (void)ApplyFullscreenModePolicy(window, true);
+  }
+}
+
 bool SavedPositionIntersectsDisplay(const PersistedWindowState& state) {
   if (!state.has_position) {
     return false;
@@ -426,6 +482,28 @@ bool ParsePositiveInt(const char* name, int fallback, int* value) {
   }
   *value = static_cast<int>(parsed);
   return true;
+}
+
+uint64_t ConfiguredInputPumpHz() {
+  int parsed = static_cast<int>(kProductionInputPumpHz);
+  const bool accepted =
+      ParsePositiveInt("MOCKTAIL_INPUT_PUMP_HZ",
+                       static_cast<int>(kProductionInputPumpHz), &parsed) &&
+      static_cast<uint64_t>(parsed) >= kMinimumInputPumpHz &&
+      static_cast<uint64_t>(parsed) <= kMaximumInputPumpHz;
+  if (!accepted) {
+    const char* configured = GetEnvNonEmpty("MOCKTAIL_INPUT_PUMP_HZ");
+    if (configured != nullptr) {
+      fprintf(stderr,
+              "  [input] ignoring MOCKTAIL_INPUT_PUMP_HZ=%s; expected %llu to "
+              "%llu Hz\n",
+              configured,
+              static_cast<unsigned long long>(kMinimumInputPumpHz),
+              static_cast<unsigned long long>(kMaximumInputPumpHz));
+    }
+    return kProductionInputPumpHz;
+  }
+  return static_cast<uint64_t>(parsed);
 }
 
 bool IsAutoGraphicsBackend(const char* backend) {
@@ -974,9 +1052,6 @@ bool ActivateWindowEventLifecycles() {
               g_real_swap_count.load(std::memory_order_relaxed));
         });
   }
-  fprintf(stderr,
-          "  [input] SDL event pump target=%llu Hz raw-motion, no smoothing\n",
-          static_cast<unsigned long long>(kProductionInputPumpHz));
   return true;
 }
 
@@ -1012,6 +1087,8 @@ bool CreateSoftwareWaitingWindow(int width, int height, const char* title) {
   }
   ApplyWindowIcon(g_state.sdl_window);
   ApplyMinimumWindowSize(g_state.sdl_window);
+  ApplyStartupFullscreenMode(g_state.sdl_window,
+                             presentation.fullscreen_at_creation);
   ApplyRestoredWindowPosition();
   ApplyRestoredWindowMaximization(g_state.sdl_window, presentation);
 
@@ -1086,6 +1163,12 @@ bool Init(int width, int height, const char* title) {
   // The Vulkan overlay renders preedit text; the platform IME owns candidates.
   SDL_SetHint(SDL_HINT_IME_IMPLEMENTED_UI, "composition");
 
+  const uint64_t input_pump_hz = ConfiguredInputPumpHz();
+  g_input_pump_pacer.SetIntervalNs(1000000000ULL / input_pump_hz);
+  fprintf(stderr,
+          "  [input] SDL event pump target=%llu Hz raw-motion, no smoothing\n",
+          static_cast<unsigned long long>(input_pump_hz));
+
   g_state.state_persistence_active =
       !g_window_state_path.empty() && !WindowStatePersistenceSuppressed();
   g_state.state_persistence_dirty = false;
@@ -1153,6 +1236,8 @@ bool Init(int width, int height, const char* title) {
     }
     ApplyWindowIcon(g_state.sdl_window);
     ApplyMinimumWindowSize(g_state.sdl_window);
+    ApplyStartupFullscreenMode(g_state.sdl_window,
+                               presentation.fullscreen_at_creation);
     ApplyRestoredWindowPosition();
     ApplyRestoredWindowMaximization(g_state.sdl_window, presentation);
     g_state.direct_vulkan = true;
@@ -1314,6 +1399,8 @@ bool Init(int width, int height, const char* title) {
   }
   ApplyWindowIcon(g_state.sdl_window);
   ApplyMinimumWindowSize(g_state.sdl_window);
+  ApplyStartupFullscreenMode(g_state.sdl_window,
+                             presentation.fullscreen_at_creation);
   ApplyRestoredWindowPosition();
   ApplyRestoredWindowMaximization(g_state.sdl_window, presentation);
   fprintf(stderr, "  [window] SDL3 window created (%dx%d)\n", width, height);
@@ -2162,6 +2249,14 @@ bool RequestFullscreenState(bool fullscreen, const char* reason) {
     QuiesceGraphicsBeforeSurfaceChange();
     HostSurfaceCommitGate::MainThreadScope commit_scope(
         ProcessHostSurfaceCommitGate());
+    if (fullscreen) {
+      // Select the configured mode before the state change, so an exclusive
+      // request switches during the transition rather than after it.
+      (void)ApplyFullscreenModePolicy(g_state.sdl_window, true);
+    } else {
+      // The next fullscreen entry starts from borderless again.
+      (void)SDL_SetWindowFullscreenMode(g_state.sdl_window, nullptr);
+    }
     if (!SDL_SetWindowFullscreen(g_state.sdl_window, fullscreen)) {
       fprintf(stderr, "  [fullscreen] SDL request failed: %s\n",
               SDL_GetError());

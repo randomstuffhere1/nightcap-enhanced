@@ -132,6 +132,11 @@ input:
   # Uses Roblox's pictures, a game's own cursor included. The shift lock
   # cursor is still drawn by Roblox.
   hardware_cursor: false
+  # Integer Hz (default: 240, 60-360): how often Nightcap checks for mouse and
+  # keyboard events. 240 matches Roblox's highest scheduler frame rate, so it
+  # keeps up with the fastest frames the client reports. Lower values free CPU
+  # time; raise it only for a display and game that run above 240 FPS.
+  pump_hz: 240
 
 overlay:
   # Boolean (default: false): show the game server's location for a few
@@ -212,6 +217,12 @@ window:
   # Boolean (default: false): close Nightcap when you leave an experience,
   # instead of staying open on the Roblox home screen.
   close_on_leave: false
+  # Boolean (default: false): use a native display mode in fullscreen instead
+  # of the compositor's borderless path. Exclusive fullscreen can cut input
+  # latency on X11 by bypassing the compositor, at the cost of a display mode
+  # switch and a slower alt-tab. Wayland has no exclusive fullscreen, so it
+  # stays borderless.
+  exclusive_fullscreen: false
 
 network:
   # Boolean (default: false): follow the host HTTP/SOCKS5 proxy and

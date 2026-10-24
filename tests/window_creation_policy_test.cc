@@ -42,6 +42,13 @@ TEST(WindowCreationPolicyTest, DoesNotSynchronizeInitialX11Map) {
   EXPECT_FALSE(DirectVulkanWindowRequiresInitialSync(""));
 }
 
+TEST(WindowCreationPolicyTest, ExclusiveFullscreenIsUnavailableOnWayland) {
+  EXPECT_FALSE(SupportsExclusiveFullscreen("wayland"));
+  EXPECT_TRUE(SupportsExclusiveFullscreen("x11"));
+  EXPECT_TRUE(SupportsExclusiveFullscreen("dummy"));
+  EXPECT_TRUE(SupportsExclusiveFullscreen(""));
+}
+
 }  // namespace
 }  // namespace window
 }  // namespace mocktail

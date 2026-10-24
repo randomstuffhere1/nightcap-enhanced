@@ -306,6 +306,10 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
       ReadBoolean(environment, "MOCKTAIL_WIN_CLOSE_ON_LEAVE",
                   config.window_.close_on_leave,
                   &config.window_.close_on_leave_valid);
+  config.window_.exclusive_fullscreen =
+      ReadBoolean(environment, "MOCKTAIL_WIN_EXCLUSIVE_FULLSCREEN",
+                  config.window_.exclusive_fullscreen,
+                  &config.window_.exclusive_fullscreen_valid);
   config.theme_mode_ =
       environment.GetOr("MOCKTAIL_THEME", config.theme_mode_);
   for (const auto& [name, field] :
@@ -385,6 +389,14 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
           InputEnabled(environment, "MOCKTAIL_HARDWARE_CURSOR");
       hardware_cursor.has_value()) {
     config.input_capabilities_.hardware_cursor = *hardware_cursor;
+  }
+  {
+    std::uint32_t pump_hz = 0;
+    config.input_capabilities_.pump_hz_valid = ParseBoundedUnsigned(
+        environment.GetOr("MOCKTAIL_INPUT_PUMP_HZ", "240"), 60, 360,
+        &pump_hz);
+    config.input_capabilities_.pump_hz =
+        config.input_capabilities_.pump_hz_valid ? pump_hz : 240;
   }
   bool customized_device = false;
   config.device_profile_valid_ =
