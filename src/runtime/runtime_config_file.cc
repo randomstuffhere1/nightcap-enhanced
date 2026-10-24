@@ -205,7 +205,7 @@ constexpr std::array<Field, 2> kGraphicsFields{
           FieldKind::kEnum, 0, 0, "on off clear"},
 };
 
-constexpr std::array<Field, 4> kPerformanceFields{
+constexpr std::array<Field, 5> kPerformanceFields{
     Field{"performance.texture_memory_mb", "MOCKTAIL_TEXTURE_MEMORY_MB",
           FieldKind::kBoundedUnsigned, 0, 65536},
     Field{"performance.small_texture_upscale", "MOCKTAIL_SMALL_TEXTURE_UPSCALE",
@@ -214,6 +214,7 @@ constexpr std::array<Field, 4> kPerformanceFields{
           FieldKind::kBoundedUnsigned, 0, 8192},
     Field{"performance.multithreaded_rendering",
           "MOCKTAIL_MULTITHREADED_RENDERING", FieldKind::kBooleanDigits},
+    Field{"performance.mangohud", "MANGOHUD", FieldKind::kBooleanDigits},
 };
 
 constexpr std::array<Field, 4> kWindowAndDeviceFields{
@@ -509,6 +510,7 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
     return found == yaml.end() ? std::nullopt
                                : std::optional<std::string>(found->second);
   };
+
   // The accepted-key list is derived from the field tables and the explicitly
   // handled keys, so a key cannot be accepted without being handled, or
   // handled without being accepted. It used to be a separate hand-written set
@@ -734,6 +736,7 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
     }
     (*environment)["MOCKTAIL_GAMEMODE"] = GameModePolicyName(parsed);
   }
+
   if (!ApplyFields(kWindowAndDeviceFields, yaml, environment, error)) {
     return false;
   }
@@ -1268,6 +1271,9 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_DISCORD_RPC_IMAGE_SMALL_TEXT",
                           config.discord_rpc().images.small_text, error);
   if (!base_exported) {
+    return false;
+  }
+  if (config.mangohud() && !SetEnvironmentValue("MANGOHUD", "1", error)) {
     return false;
   }
   if (!SetEnvironmentValue("MOCKTAIL_FLEASION_ENABLED",

@@ -209,6 +209,7 @@ class RuntimeConfig {
   int audio_buffer_samples() const { return audio_buffer_samples_; }
   bool audio_buffer_valid() const { return audio_buffer_valid_; }
   const PerformancePolicy& performance() const { return performance_; }
+  bool mangohud() const { return mangohud_; }
   const std::string& audio_output_device() const {
     return audio_output_device_;
   }
@@ -271,6 +272,7 @@ class RuntimeConfig {
   int audio_buffer_samples_ = 0;
   bool audio_buffer_valid_ = true;
   PerformancePolicy performance_;
+  bool mangohud_ = false;
   std::string audio_output_device_ = "default";
   bool audio_output_device_valid_ = true;
   std::string audio_input_device_ = "default";

@@ -100,6 +100,9 @@ performance:
   # String (default: auto): request Feral GameMode when its host daemon and
   # client library are available. Supported values: auto, on, off.
   gamemode: auto
+  # Boolean (default: false): launch with MANGOHUD=1 so the MangoHud overlay
+  # draws over the game. MangoHud must be installed on the host.
+  mangohud: false
   # Integer MiB (default: 0): texture memory budget to tell Roblox, overriding
   # the automatic eighth-of-host-RAM figure. 0 keeps the automatic value, which
   # is capped at 1536 and is usually right. Raise it if a heavy place reuploads
