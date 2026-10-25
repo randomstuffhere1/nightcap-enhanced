@@ -166,7 +166,7 @@ bool RobloxInputNativeAdapter::SupportsGamepads() const {
 }
 
 Status RobloxInputNativeAdapter::GetMainWindowMouseLock(
-    RobloxMouseLock* mouse_lock) {
+    RobloxMouseLock* mouse_lock, bool probe_current_position) {
   if (mouse_lock == nullptr) {
     return Status::Error(StatusCode::kInvalidArgument,
                          "mouse lock output is required");
@@ -181,9 +181,15 @@ Status RobloxInputNativeAdapter::GetMainWindowMouseLock(
   mouse_lock->center = symbols_.get_main_window_is_mouse_locked_center(
                            env, native_input_class_) == JNI_TRUE;
   status = CheckJniException(env, "nativeGetMainWindowIsMouseLockedCenter");
-  if (!status.ok() || symbols_.mouse_lock_compare == nullptr) {
+  if (!status.ok() || symbols_.mouse_lock_compare == nullptr ||
+      !probe_current_position) {
     return status;
   }
+  // The comparison the game runs against its mouse behaviour is an immediate
+  // in its own code. Rewriting it is the only way to ask whether the behaviour
+  // is the current-position lock, and a thread that calls the function while
+  // the other value is in place sees the wrong answer, so callers only ask
+  // while that answer changes what happens next.
   volatile std::uint8_t* compare = symbols_.mouse_lock_compare;
   *compare = kMouseBehaviorLockCurrentPosition;
   mouse_lock->current_position =
@@ -654,8 +660,9 @@ bool RobloxInputRuntime::SupportsGamepads() const {
   return adapter_.SupportsGamepads();
 }
 
-Status RobloxInputRuntime::GetMainWindowMouseLock(RobloxMouseLock* lock) {
-  return adapter_.GetMainWindowMouseLock(lock);
+Status RobloxInputRuntime::GetMainWindowMouseLock(RobloxMouseLock* lock,
+                                                  bool probe_current_position) {
+  return adapter_.GetMainWindowMouseLock(lock, probe_current_position);
 }
 
 void RobloxInputRuntime::PlatformEventCallback(

@@ -45,6 +45,26 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Fixed
 
+- Releasing a right-click camera drag while the mouse is still moving no longer snaps the camera to a
+  new angle. The drag's remaining motion arrives after the release, and every one of those events used to
+  carry its distance on as camera input; only relative (captured) motion is look input now.
+- The pointer no longer drifts away from where a right-click drag began over repeated drags. Restoring it
+  asks the desktop for the pointer instead of reading the position the last restore wrote, and warps again
+  once the pointer is unlocked, so a compositor that ignores a warp made while it is held still puts it
+  back.
+- A right-click drag started straight after leaving first person or turning off Shift Lock no longer
+  sends the pointer back to the middle of the window when you let go. The lock that just dropped keeps the
+  capture alive for a few frames, and the drag used to inherit that lock's restore point instead of where
+  its own button went down.
+- A right press that never became a capture no longer leaves a restore point behind for a later one.
+- A right-click camera drag now ends with the pointer back where the button was pressed. Roblox only
+  reports the pan a frame or more after the press, and the drag has already moved the pointer by then, so
+  the cursor used to come back partway along the drag, or somewhere else on Wayland. The return trip is no
+  longer sent to Roblox as look movement, so it cannot turn the camera as the drag ends either.
+- Nightcap no longer reads Roblox's current-position mouse lock every frame. Answering it rewrites an
+  instruction in the game's own code and puts it back, and a thread that calls the game's mouse-lock query
+  in between sees the other mouse behaviour, which could jerk the camera during a drag. The probe now runs
+  only while a right drag is starting.
 - Fleasion replacements load again. With `integrations.fleasion.enabled`, Nightcap sets
   `FFlagAssetProviderUseAssetDeliveryV3` to `False`, so Roblox requests assets through the endpoint
   Fleasion rewrites. A value in `~/.config/mocktail/fflags.json` still wins.

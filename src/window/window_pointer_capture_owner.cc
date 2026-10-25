@@ -112,6 +112,10 @@ bool WindowPointerCaptureOwner::Pump(bool text_input_active) {
   }
 
   MouseLock mouse_lock;
+  // Only the right-button drag reads current_position, and once the drag is
+  // under way right_drag_panning_ keeps the capture without asking again.
+  mouse_lock.probe_current_position =
+      right_button_held_ && !right_drag_panning_;
   const bool query_ok =
       callback != nullptr &&
       [&] {
@@ -237,9 +241,22 @@ bool WindowPointerCaptureOwner::OnRightButton(bool pressed,
                                               bool text_input_active) {
   if (pressed) {
     focused_ = true;
+    // Roblox reports the pan a frame or more after this, so remember the press
+    // point now; the capture starts from the pointer's position by then.
+    if (backend_ != nullptr) {
+      backend_->RememberPointerPosition(PointerPosition{});
+    }
   }
+  const bool was_captured = captured_;
   right_button_held_ = pressed;
-  return Pump(text_input_active);
+  const bool applied = Pump(text_input_active);
+  // A press that never started a capture leaves a remembered point behind. The
+  // next capture, which can begin without a press of its own (shift lock, first
+  // person), must not restore the pointer to it.
+  if (!pressed && !was_captured && backend_ != nullptr) {
+    backend_->ForgetPointerPosition();
+  }
+  return applied;
 }
 
 void WindowPointerCaptureOwner::SetGameSessionActive(bool active) {
@@ -336,6 +353,51 @@ bool WindowPointerCaptureOwner::Apply(bool capture, CursorShape cursor,
   return false;
 }
 
+void SdlPointerCaptureBackend::RememberPointerPosition(PointerPosition position) {
+  auto* window = static_cast<SDL_Window*>(window_);
+  if (window == nullptr) {
+    return;
+  }
+  int width = 0;
+  int height = 0;
+  const bool window_sized =
+      SDL_GetWindowSize(window, &width, &height) && width > 0 && height > 0;
+  if (!position.known) {
+    // SDL's own pointer state is not necessarily a position the pointer ever
+    // had. Restoring a capture writes it to the restore point without moving
+    // the pointer, so after a drag it can hold a place the pointer never went.
+    // Ask the desktop for the pointer itself, and take the window-relative
+    // view of it, when the platform can answer.
+    float global_x = 0.0f;
+    float global_y = 0.0f;
+    int window_x = 0;
+    int window_y = 0;
+    if (SDL_GetGlobalMouseState(&global_x, &global_y) &&
+        SDL_GetWindowPosition(window, &window_x, &window_y)) {
+      position.x = global_x - static_cast<float>(window_x);
+      position.y = global_y - static_cast<float>(window_y);
+      position.known = true;
+      // A position outside the window is a backend that cannot tell us, not a
+      // drag that started off the edge of the client.
+      if (window_sized && (position.x < 0.0f || position.y < 0.0f ||
+                           position.x >= static_cast<float>(width) ||
+                           position.y >= static_cast<float>(height))) {
+        position.known = false;
+      }
+    }
+  }
+  if (!position.known) {
+    SDL_GetMouseState(&position.x, &position.y);
+  }
+  remembered_x_ = position.x;
+  remembered_y_ = position.y;
+  has_remembered_position_ = true;
+}
+
+void SdlPointerCaptureBackend::ForgetPointerPosition() {
+  has_remembered_position_ = false;
+}
+
 bool SdlPointerCaptureBackend::ShowsCursorWhileCaptured() const {
   // Wayland locks the pointer in place for relative mode. Other drivers
   // confine it to the window center, where a shown cursor would jump.
@@ -407,13 +469,22 @@ bool SdlPointerCaptureBackend::Apply(bool relative_mode, CursorShape cursor,
   SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE,
               relative_mode && cursor != CursorShape::kHidden ? "1" : "0");
   if (relative_mode && !relative_mode_) {
-    SDL_GetMouseState(&capture_anchor_x_, &capture_anchor_y_);
+    if (has_remembered_position_) {
+      capture_anchor_x_ = remembered_x_;
+      capture_anchor_y_ = remembered_y_;
+    } else {
+      SDL_GetMouseState(&capture_anchor_x_, &capture_anchor_y_);
+    }
+    has_remembered_position_ = false;
     capture_anchor_valid_ = true;
     anchor_centered_ = false;
     SDL_SetWindowMouseGrab(window, true);
   }
   // Before relative mode starts: Wayland then locks the pointer where it is.
   if (relative_mode && center_pointer && !pointer_centered_) {
+    // The middle of the window is where this capture restores to, so a point
+    // remembered before it belongs to whatever the user was doing then.
+    has_remembered_position_ = false;
     int width = 0;
     int height = 0;
     if (SDL_GetWindowSize(window, &width, &height)) {
@@ -433,7 +504,17 @@ bool SdlPointerCaptureBackend::Apply(bool relative_mode, CursorShape cursor,
   if (pointer_centered_ && !(relative_mode && center_pointer)) {
     int width = 0;
     int height = 0;
-    if (SDL_GetWindowSize(window, &width, &height)) {
+    if (has_remembered_position_) {
+      // A drag that began while the capture still belonged to the client's own
+      // centre lock, which is what the frames after first person look like,
+      // puts the pointer back where its button went down instead of in the
+      // middle of the window.
+      capture_anchor_x_ = remembered_x_;
+      capture_anchor_y_ = remembered_y_;
+      capture_anchor_valid_ = true;
+      anchor_centered_ = false;
+      has_remembered_position_ = false;
+    } else if (SDL_GetWindowSize(window, &width, &height)) {
       capture_anchor_x_ = width / 2.0f;
       capture_anchor_y_ = height / 2.0f;
       capture_anchor_valid_ = true;
@@ -455,8 +536,17 @@ bool SdlPointerCaptureBackend::Apply(bool relative_mode, CursorShape cursor,
     }
     return false;
   }
-  if (!relative_mode && relative_mode_ && anchor_centered_ &&
-      capture_anchor_valid_) {
+  if (!relative_mode && relative_mode_ && capture_anchor_valid_) {
+    // The warp above only records where the pointer should go: SDL applies it as
+    // relative mode ends, and a compositor that holds the pointer in place for
+    // the lock can ignore that hint. Warping again now that the pointer is
+    // unlocked lands on the same place where the first one worked, and gives
+    // the second one a chance where it did not.
+    SDL_WarpMouseInWindow(window, capture_anchor_x_, capture_anchor_y_);
+    // Roblox keeps drawing its cursor at the position it held during the
+    // capture. Tell it where the pointer was put back, so the game's cursor and
+    // the desktop one agree when the drag ends. The motion carries no delta:
+    // the trip back is not camera movement.
     SDL_Event motion{};
     motion.type = SDL_EVENT_MOUSE_MOTION;
     motion.motion.windowID = SDL_GetWindowID(window);

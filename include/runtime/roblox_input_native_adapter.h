@@ -40,7 +40,10 @@ class RobloxInputNativeAdapter final {
   Status Release();
   bool initialized() const;
   bool SupportsGamepads() const;
-  Status GetMainWindowMouseLock(RobloxMouseLock* lock);
+  // The game's mouse lock state, including its current-position lock when
+  // probe_current_position asks for it.
+  Status GetMainWindowMouseLock(RobloxMouseLock* lock,
+                                bool probe_current_position = true);
   Status QueryCurrentTextBoxInfo(RobloxNativeTextBoxInfoQueryResult* result);
   RobloxInputSink Sink();
 
@@ -128,7 +131,8 @@ class RobloxInputRuntime final {
                                    const RobloxTextFocusProperties& properties);
   RobloxInputDispatchResult HandleEvent(const platform::PlatformEvent& event);
   RobloxInputSnapshot Snapshot() const;
-  Status GetMainWindowMouseLock(RobloxMouseLock* lock);
+  Status GetMainWindowMouseLock(RobloxMouseLock* lock,
+                                bool probe_current_position = true);
   bool SupportsGamepads() const;
   void SetRawMouseEnabled(bool enabled);
 

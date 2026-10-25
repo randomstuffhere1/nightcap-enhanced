@@ -320,6 +320,7 @@ Status RobloxInputRouter::Activate(RobloxInputViewport viewport,
   mouse_x_ = 0.0f;
   mouse_y_ = 0.0f;
   pointer_anchored_ = false;
+  absolute_look_suppressed_ = false;
   return Status::Ok();
 }
 
@@ -555,6 +556,17 @@ RobloxInputDispatchResult RobloxInputRouter::HandleMouseMotionLocked(
       CoordinateTransform(snapshot_.viewport);
   const float delta_x = transform.HostLogicalToGuestX(event.delta_x);
   const float delta_y = transform.HostLogicalToGuestY(event.delta_y);
+  // When a capture ends, the window puts the pointer back where the drag began
+  // and reports that as absolute motion, and the client follows it with its own
+  // re-sync of a position that drifted during the capture. None of that is look
+  // input: passing a delta on would snap the camera by the whole length of the
+  // drag. Releasing while the pointer is still moving queues several of these,
+  // so the suppression holds until the next press rather than ending after the
+  // first one.
+  if (event.relative) {
+    absolute_look_suppressed_ = true;
+  }
+  const bool restore_motion = !event.relative && absolute_look_suppressed_;
 
   // The pointer holds its captured position while the delta passes through, so
   // a long camera turn neither parks the reported position at the viewport edge
@@ -576,8 +588,10 @@ RobloxInputDispatchResult RobloxInputRouter::HandleMouseMotionLocked(
   // Raw mouse reports the host's own delta, skipping the guest-surface scale
   // that otherwise changes look sensitivity when the desktop display scale and
   // the window's pixel density disagree. The position stays in guest units.
-  const float reported_delta_x = raw_mouse_ ? event.delta_x : delta_x;
-  const float reported_delta_y = raw_mouse_ ? event.delta_y : delta_y;
+  const float reported_delta_x =
+      restore_motion ? 0.0f : (raw_mouse_ ? event.delta_x : delta_x);
+  const float reported_delta_y =
+      restore_motion ? 0.0f : (raw_mouse_ ? event.delta_y : delta_y);
 
   return NativeResultLocked(
       sink_.mouse_move(sink_.context, mouse_x_, mouse_y_, reported_delta_x,
@@ -597,6 +611,11 @@ RobloxInputDispatchResult RobloxInputRouter::HandleMouseButtonLocked(
     return Result(RobloxInputDispatchState::kIgnoredUnsupported,
                   RobloxInputEventKind::kMouseButton,
                   Unsupported("SDL mouse button has no Roblox mapping"));
+  }
+  if (event.pressed) {
+    // A press may start a drag the host does not capture, such as a
+    // left-button one, whose absolute motion carries genuine deltas again.
+    absolute_look_suppressed_ = false;
   }
   const platform::SurfaceCoordinateTransform transform =
       CoordinateTransform(snapshot_.viewport);

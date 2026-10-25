@@ -643,6 +643,7 @@ add_library(mocktail_window STATIC
   src/window/window_fullscreen_request_gate.cc
   src/window/window_game_surface_bridge.cc
   src/window/window_pointer_capture_owner.cc
+  src/window/window_pointer_event_pump.cc
   src/window/window_resize_readiness_gate.cc
   src/window/window_state_store.cc
   src/window/window_surface_lifecycle.cc

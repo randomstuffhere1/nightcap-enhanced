@@ -19,6 +19,11 @@ struct MouseLock {
   bool center = false;
   bool current_position = false;
   bool reports_current_position = false;
+  // Whether the answer to current_position is needed yet. Asking costs a
+  // rewrite of an instruction in the game's own code and putting it back, which
+  // a thread reading it in between sees as the other mouse behaviour, so it is
+  // only asked for while a right-button drag can still start.
+  bool probe_current_position = false;
 };
 
 using MouseLockQueryCallback = bool (*)(void* context, MouseLock* lock);
@@ -37,6 +42,14 @@ const char* CursorShapeName(CursorShape shape);
 
 using CursorImagePtr = std::shared_ptr<const CursorImage>;
 
+// Where the pointer is, in window coordinates. `known` marks a position the
+// host actually reported; without one the backend asks the platform itself.
+struct PointerPosition {
+  float x = 0.0f;
+  float y = 0.0f;
+  bool known = false;
+};
+
 class PointerCaptureBackend {
  public:
   virtual ~PointerCaptureBackend() = default;
@@ -48,6 +61,15 @@ class PointerCaptureBackend {
   // True when a cursor shown during relative mode stays where the capture
   // began, instead of following the hidden pointer.
   virtual bool ShowsCursorWhileCaptured() const { return false; }
+  // Records where the pointer is for the capture that starts next. Roblox only
+  // starts panning a frame or more after the right button goes down, so by the
+  // time the capture begins the drag has already moved the pointer; restoring
+  // to where it is then drops the cursor partway along the drag instead of
+  // where the button was pressed.
+  virtual void RememberPointerPosition(PointerPosition /*position*/) {}
+  // Drops a position remembered for a capture that never started, so the next
+  // one cannot restore the pointer to an old press point.
+  virtual void ForgetPointerPosition() {}
 };
 
 class WindowPointerCaptureOwner final {
@@ -181,6 +203,8 @@ class SdlPointerCaptureBackend final : public PointerCaptureBackend {
   bool Apply(bool relative_mode, CursorShape cursor,
              const CursorImagePtr& image, bool center_pointer) override;
   bool ShowsCursorWhileCaptured() const override;
+  void RememberPointerPosition(PointerPosition position) override;
+  void ForgetPointerPosition() override;
 
  private:
   // The SDL cursor for a shape, or for a game's picture; null when the
@@ -199,6 +223,11 @@ class SdlPointerCaptureBackend final : public PointerCaptureBackend {
   bool pointer_centered_ = false;
   bool capture_anchor_valid_ = false;
   bool anchor_centered_ = false;
+  // The pointer position at the right-button press, used as the restore point
+  // of the capture that press starts.
+  float remembered_x_ = 0.0f;
+  float remembered_y_ = 0.0f;
+  bool has_remembered_position_ = false;
 };
 
 }  // namespace window

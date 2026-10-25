@@ -36,6 +36,7 @@
 #include "window/window_fullscreen_state_sync.h"
 #include "window/window_creation_policy.h"
 #include "window/window_pointer_capture_owner.h"
+#include "window/window_pointer_event_pump.h"
 #include "window/window_resize_readiness_gate.h"
 #include "window/window_state_store.h"
 #include "window/window_text_input_owner.h"
@@ -2459,6 +2460,11 @@ void MaybeReportVulkanPresentStall() {
                                       1000000ULL));
 }
 
+void NotifyPlatformEvent(void* /*context*/,
+                         const platform::PlatformEvent& event) {
+  g_platform_event_observer.Notify(event);
+}
+
 void NotifyPointerRecenter() {
   if (g_pointer_capture_owner == nullptr ||
       !g_pointer_capture_owner->TakePointerRecenter()) {
@@ -2501,16 +2507,8 @@ bool PumpEvents() {
     fprintf(stderr, "  [input] SDL pointer capture state update failed\n");
   }
   NotifyPointerRecenter();
-  platform::PlatformEvent pending_motion{};
-  bool has_pending_motion = false;
-
-  auto flush_motion = [&]() {
-    if (has_pending_motion) {
-      g_platform_event_observer.Notify(pending_motion);
-      has_pending_motion = false;
-      pending_motion = {};
-    }
-  };
+  WindowPointerEventPump pointer_events(g_pointer_capture_owner.get(),
+                                        &NotifyPlatformEvent, nullptr);
 
   SDL_Event event;
   // Pump + PeepEvents drains without SDL_WaitEventTimeoutNS. Unthrottled
@@ -2527,7 +2525,7 @@ bool PumpEvents() {
   while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_EVENT_FIRST,
                         SDL_EVENT_LAST) > 0) {
     if (event.type != SDL_EVENT_MOUSE_MOTION) {
-      flush_motion();
+      pointer_events.Flush();
     }
     if (SdlEventTraceEnabled()) {
       fprintf(stderr, "  [window] SDL event type=%u\n", event.type);
@@ -2640,55 +2638,12 @@ bool PumpEvents() {
       }
     }
     if (converted && !fullscreen_shortcut) {
-      if (event.type == SDL_EVENT_MOUSE_MOTION) {
-        if (!has_pending_motion) {
-          pending_motion = platform_event;
-          has_pending_motion = true;
-        } else {
-          auto* cur =
-              std::get_if<platform::MouseMotionEvent>(&pending_motion.payload);
-          const auto* nxt =
-              std::get_if<platform::MouseMotionEvent>(&platform_event.payload);
-          if (cur != nullptr && nxt != nullptr &&
-              cur->relative == nxt->relative) {
-            cur->delta_x += nxt->delta_x;
-            cur->delta_y += nxt->delta_y;
-            cur->x = nxt->x;
-            cur->y = nxt->y;
-            cur->buttons = nxt->buttons;
-            pending_motion.timestamp_ns = platform_event.timestamp_ns;
-          } else {
-            flush_motion();
-            pending_motion = platform_event;
-            has_pending_motion = true;
-          }
-        }
-      } else {
-        g_platform_event_observer.Notify(platform_event);
-      }
-    }
-    if (converted && !fullscreen_shortcut && event.type == SDL_EVENT_KEY_DOWN &&
-        !event.key.repeat &&
-        (event.key.scancode == SDL_SCANCODE_LSHIFT ||
-         event.key.scancode == SDL_SCANCODE_RSHIFT) &&
-        g_pointer_capture_owner != nullptr &&
-        !g_pointer_capture_owner->OnShiftKeyPressed(
-            g_text_input_owner != nullptr && g_text_input_owner->active())) {
-      fprintf(stderr,
-              "  [input] SDL shift-lock pointer capture update failed\n");
-    }
-    if ((event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
-         event.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
-        event.button.button == SDL_BUTTON_RIGHT &&
-        g_pointer_capture_owner != nullptr &&
-        !g_pointer_capture_owner->OnRightButton(
-            event.button.down,
-            g_text_input_owner != nullptr && g_text_input_owner->active())) {
-      fprintf(stderr,
-              "  [input] SDL right-button pointer capture update failed\n");
+      pointer_events.Handle(
+          platform_event,
+          g_text_input_owner != nullptr && g_text_input_owner->active());
     }
   }
-  flush_motion();
+  pointer_events.Flush();
   NotifyPointerRecenter();
   MaybePersistWindowState();
   MaybeRecoverVulkanSurface();

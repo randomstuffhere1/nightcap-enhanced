@@ -321,6 +321,103 @@ TEST_F(RobloxInputRouterTest, HoldsPointerWhenRelativeButtonCarriesAPosition) {
   EXPECT_FLOAT_EQ(probe_.mouse_buttons.back().y, 360.0f);
 }
 
+TEST_F(RobloxInputRouterTest, RestoreMotionAfterCaptureCarriesNoLookDelta) {
+  // When a capture ends the window puts the pointer back where the drag began
+  // and reports that as absolute motion. The distance it travels spans the
+  // whole drag, so passing it on as a delta would snap the camera as the drag
+  // ends, and a compositor that cannot move the pointer back reports a
+  // different one every time.
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseButtonEvent{
+                      true, SDL_BUTTON_RIGHT, 1, 640.0f, 360.0f, false}))
+                  .dispatched());
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseMotionEvent{
+                      0.0f, 0.0f, 120.0f, 40.0f, 0, true}))
+                  .dispatched());
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseButtonEvent{
+                      false, SDL_BUTTON_RIGHT, 1, 0.0f, 0.0f, true}))
+                  .dispatched());
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseMotionEvent{
+                      320.0f, 180.0f, 900.0f, 500.0f, 0, false}))
+                  .dispatched());
+
+  ASSERT_EQ(probe_.mouse_moves.size(), 2U);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[0].x, 640.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[0].delta_x, 120.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[0].delta_y, 40.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[1].x, 320.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[1].y, 180.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[1].delta_x, 0.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[1].delta_y, 0.0f);
+
+  // Absolute motion still moves the reported pointer, but it is not look input
+  // until a press starts a drag the host does not capture.
+  ASSERT_TRUE(
+      router_
+          .HandleEvent(Event(platform::MouseMotionEvent{420.0f, 220.0f, 7.0f,
+                                                        -3.0f, 0, false}))
+          .dispatched());
+  ASSERT_EQ(probe_.mouse_moves.size(), 3U);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[2].x, 420.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[2].y, 220.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[2].delta_x, 0.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[2].delta_y, 0.0f);
+
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseButtonEvent{
+                      true, SDL_BUTTON_LEFT, 1, 420.0f, 220.0f, false}))
+                  .dispatched());
+  ASSERT_TRUE(
+      router_
+          .HandleEvent(Event(platform::MouseMotionEvent{430.0f, 225.0f, 10.0f,
+                                                        5.0f, 0, false}))
+          .dispatched());
+  ASSERT_EQ(probe_.mouse_moves.size(), 4U);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[3].delta_x, 10.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[3].delta_y, 5.0f);
+}
+
+TEST_F(RobloxInputRouterTest,
+       ReleaseWhileMovingSendsNoLookDeltaUntilTheNextPress) {
+  // Letting go of the camera mid-drag leaves the pointer's own motion behind
+  // the restore: the client re-syncs a position that drifted during the
+  // capture, and the desktop queues more motion against the old one. A single
+  // suppressed event is not enough, because the ones after it carry the same
+  // drag distance and snap the camera as the drag ends.
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseButtonEvent{
+                      true, SDL_BUTTON_RIGHT, 1, 640.0f, 360.0f, false}))
+                  .dispatched());
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseMotionEvent{
+                      0.0f, 0.0f, 400.0f, 0.0f, 0, true}))
+                  .dispatched());
+  ASSERT_TRUE(router_
+                  .HandleEvent(Event(platform::MouseButtonEvent{
+                      false, SDL_BUTTON_RIGHT, 1, 0.0f, 0.0f, true}))
+                  .dispatched());
+
+  for (const auto& burst :
+       {platform::MouseMotionEvent{640.0f, 360.0f, 0.0f, 0.0f, 0, false},
+        platform::MouseMotionEvent{1240.0f, 560.0f, 600.0f, 200.0f, 0, false},
+        platform::MouseMotionEvent{1250.0f, 520.0f, 10.0f, -40.0f, 0, false}}) {
+    ASSERT_TRUE(router_.HandleEvent(Event(burst)).dispatched());
+  }
+
+  ASSERT_EQ(probe_.mouse_moves.size(), 4U);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves[0].delta_x, 400.0f);
+  for (std::size_t i = 1; i < probe_.mouse_moves.size(); ++i) {
+    EXPECT_FLOAT_EQ(probe_.mouse_moves[i].delta_x, 0.0f) << i;
+    EXPECT_FLOAT_EQ(probe_.mouse_moves[i].delta_y, 0.0f) << i;
+  }
+  // The reported position still follows the pointer.
+  EXPECT_FLOAT_EQ(probe_.mouse_moves.back().x, 1250.0f);
+  EXPECT_FLOAT_EQ(probe_.mouse_moves.back().y, 520.0f);
+}
+
 TEST_F(RobloxInputRouterTest, HoldsPointerWhenRelativeWheelCarriesAPosition) {
   // Zooming the camera mid-drag scrolls while capture is held. Wayland stamps
   // the drifted position on the wheel event too, so the capture flag decides

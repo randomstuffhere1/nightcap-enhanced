@@ -55,6 +55,13 @@ class FakeBackend final : public PointerCaptureBackend {
     return shows_captured_cursor;
   }
 
+  void RememberPointerPosition(PointerPosition position) override {
+    ++remember_calls;
+    remembered = position;
+  }
+
+  void ForgetPointerPosition() override { ++forget_calls; }
+
   struct Call {
     bool relative_mode;
     bool cursor_visible;
@@ -63,6 +70,9 @@ class FakeBackend final : public PointerCaptureBackend {
     bool center_pointer;
   };
   std::vector<Call> calls;
+  int remember_calls = 0;
+  int forget_calls = 0;
+  PointerPosition remembered;
   bool succeeds = true;
   bool shows_captured_cursor = false;
 };
@@ -72,6 +82,9 @@ struct QueryState {
   bool locked_center = false;
   bool locked_current_position = false;
   bool reports_current_position = false;
+  bool probed = false;
+  // Production only answers current_position when the probe is asked for.
+  bool honor_probe = false;
 };
 
 bool Query(void* context, MouseLock* lock) {
@@ -79,9 +92,14 @@ bool Query(void* context, MouseLock* lock) {
   if (state == nullptr || lock == nullptr || !state->succeeds) {
     return false;
   }
+  state->probed = lock->probe_current_position;
   lock->center = state->locked_center;
   lock->current_position = state->locked_current_position;
   lock->reports_current_position = state->reports_current_position;
+  if (state->honor_probe && !state->probed) {
+    lock->current_position = false;
+    lock->reports_current_position = false;
+  }
   return true;
 }
 
@@ -441,6 +459,127 @@ TEST(WindowPointerCaptureOwnerTest, CameraPanKeepsCaptureWhenRobloxDropsItsLock)
   EXPECT_TRUE(owner.OnRightButton(true, false));
   EXPECT_FALSE(owner.captured());
   EXPECT_TRUE(owner.OnRightButton(false, false));
+}
+
+TEST(WindowPointerCaptureOwnerTest, RightPressRemembersThePointerPosition) {
+  // Roblox only reports the pan after the press, so the capture starts with
+  // the pointer already partway along the drag. The press point is what the
+  // capture has to restore.
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+
+  EXPECT_EQ(backend.remember_calls, 0);
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  EXPECT_EQ(backend.remember_calls, 1);
+  // The pan has not been reported yet, so nothing is captured.
+  EXPECT_FALSE(owner.captured());
+
+  query.locked_current_position = true;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_TRUE(owner.captured());
+  // Only the press captures a restore point.
+  EXPECT_EQ(backend.remember_calls, 1);
+
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  EXPECT_FALSE(owner.captured());
+}
+
+TEST(WindowPointerCaptureOwnerTest,
+     APressThatNeverCapturedLeavesNoRestorePointBehind) {
+  // A right press outside an experience captures nothing, so its position
+  // belongs to no capture. A later one that begins without a press of its own
+  // must not restore the pointer there.
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(false);
+
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  EXPECT_EQ(backend.remember_calls, 1);
+  EXPECT_FALSE(owner.captured());
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  EXPECT_EQ(backend.forget_calls, 1);
+
+  // A press that started a capture has nothing left to forget.
+  owner.SetGameSessionActive(true);
+  query.locked_current_position = true;
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  ASSERT_TRUE(owner.captured());
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  EXPECT_FALSE(owner.captured());
+  EXPECT_EQ(backend.forget_calls, 1);
+}
+
+TEST(WindowPointerCaptureOwnerTest,
+     ProbesTheCurrentPositionLockOnlyWhileADragCanStart) {
+  // Answering the probe rewrites an instruction in the game's own code and
+  // puts it back, so a thread calling the game's mouse-lock query in between
+  // reads the other mouse behaviour. Nothing needs the answer outside a right
+  // drag, and the latch carries the capture once the pan has started.
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(query.probed);
+
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  EXPECT_TRUE(query.probed);
+
+  query.locked_current_position = true;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_TRUE(owner.captured());
+
+  query.probed = false;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(query.probed);
+  EXPECT_TRUE(owner.captured());
+
+  // The next press starts a new drag, so the probe comes back.
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  query.locked_current_position = false;
+  query.probed = false;
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  EXPECT_TRUE(query.probed);
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+}
+
+TEST(WindowPointerCaptureOwnerTest, SkippedProbeStillHoldsTheDragCapture) {
+  // Once the pan has latched, production stops asking for current_position. A
+  // missing answer must not read as "the game stopped panning" and drop the
+  // capture in the middle of a drag.
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  query.locked_current_position = true;
+  query.honor_probe = true;
+  WindowPointerCaptureOwner owner(&backend);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(owner.captured());
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  EXPECT_TRUE(owner.captured());
+
+  query.probed = false;
+  for (int pump = 0; pump < 600; ++pump) {
+    EXPECT_TRUE(owner.Pump(false));
+    ASSERT_TRUE(owner.captured());
+  }
+  EXPECT_FALSE(query.probed);
+
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  EXPECT_FALSE(owner.captured());
 }
 
 TEST(WindowPointerCaptureOwnerTest, FailedQueryDoesNotHoldRightDragCapture) {

@@ -379,6 +379,29 @@ TEST_F(RobloxInputNativeAdapterTest, ReportsLockCurrentPositionThroughTheCompare
   g_mouse_behavior = 1;
 }
 
+TEST_F(RobloxInputNativeAdapterTest, SkipsTheCurrentPositionProbeWhenNotAsked) {
+  // The probe rewrites the comparison in the game's code and puts it back, and
+  // a thread reading it in between sees the other mouse behaviour. A caller
+  // that does not use the answer must not ask for it.
+  g_mouse_behavior = 2;
+  g_mouse_lock_compare = 1;
+  RobloxInputSymbols symbols = Symbols();
+  symbols.mouse_lock_compare = &g_mouse_lock_compare;
+  RobloxInputRuntime runtime(Environment(), symbols);
+  ASSERT_TRUE(runtime.Initialize({1280, 720, 1280, 720}, true).ok());
+
+  RobloxMouseLock lock;
+  ASSERT_TRUE(runtime.GetMainWindowMouseLock(&lock, false).ok());
+
+  EXPECT_FALSE(lock.center);
+  EXPECT_FALSE(lock.current_position);
+  EXPECT_FALSE(lock.reports_current_position);
+  EXPECT_EQ(g_mouse_lock_compare, 1);
+  ASSERT_EQ(probe_.calls.size(), 1U);
+  EXPECT_EQ(probe_.calls[0].name, "mouse-lock-query");
+  g_mouse_behavior = 1;
+}
+
 TEST_F(RobloxInputNativeAdapterTest,
        PlatformObserverStopsCallingNativeAfterDeactivate) {
   RobloxInputRuntime runtime(Environment(), Symbols());

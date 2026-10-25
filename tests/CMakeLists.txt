@@ -992,6 +992,18 @@ target_link_libraries(window_pointer_capture_owner_test PRIVATE
 )
 mocktail_apply_compile_options(window_pointer_capture_owner_test)
 
+# Drives the real SDL event pump, pointer capture backend and input router
+# around a right-button drag and its release, with a dummy video driver instead
+# of the client.
+add_executable(window_event_pump_test
+  window_event_pump_test.cc
+)
+target_link_libraries(window_event_pump_test PRIVATE
+  Mocktail::InputRuntime
+  GTest::gtest_main
+)
+mocktail_apply_compile_options(window_event_pump_test)
+
 add_executable(roblox_text_input_jni_bridge_test
   roblox_text_input_jni_bridge_test.cc
 )
@@ -1403,6 +1415,7 @@ gtest_discover_tests(android_log_observer_test)
 gtest_discover_tests(roblox_output_device_bridge_test)
 gtest_discover_tests(window_text_input_owner_test)
 gtest_discover_tests(window_pointer_capture_owner_test)
+gtest_discover_tests(window_event_pump_test)
 gtest_discover_tests(roblox_text_input_jni_bridge_test)
 gtest_discover_tests(auth_service_test)
 gtest_discover_tests(auth_runtime_composition_test)

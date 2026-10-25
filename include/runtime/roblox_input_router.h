@@ -257,6 +257,14 @@ class RobloxInputRouter final {
   float mouse_y_ = 0.0f;
   // True once an absolute position has been received since Activate.
   bool pointer_anchored_ = false;
+  // True once a capture has reported relative motion. Every absolute motion
+  // that follows, until the next button press, belongs to the release: the
+  // pointer being put back where the drag began, the client re-syncing a
+  // position that drifted during the capture, and whatever motion was queued
+  // behind them. Their deltas span the drag, so none of them is look input.
+  // Suppressing only the first one is not enough: releasing mid-drag leaves
+  // several, and the ones after the first reach the camera as a snap.
+  bool absolute_look_suppressed_ = false;
   bool raw_mouse_ = false;
 };
 

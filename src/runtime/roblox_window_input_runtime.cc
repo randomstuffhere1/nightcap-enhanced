@@ -211,7 +211,8 @@ bool RobloxWindowInputRuntime::MouseLockQueryCallback(void* context,
   }
   RobloxMouseLock roblox_lock;
   if (!static_cast<RobloxWindowInputRuntime*>(context)
-           ->runtime_.GetMainWindowMouseLock(&roblox_lock)
+           ->runtime_.GetMainWindowMouseLock(&roblox_lock,
+                                             lock->probe_current_position)
            .ok()) {
     return false;
   }
