@@ -33,7 +33,10 @@ Release notes on GitHub are taken from the matching section here.
   Nightcap first, so the clear still runs.
 - Roblox's own account switcher is on for every account 13 or older. Roblox's servers turn it on
   for some accounts only, and Nightcap's app policy had it off for all. After a switch, Nightcap
-  saves the new sign-in and restarts as that account, as the Android app does. Signing out from
+  saves the new sign-in and restarts as that account, as the Android app does. The restart waits
+  up to 5 seconds for Roblox to save its signed-in account list first. Nightcap also keeps the
+  other roblox.com cookies Roblox sets, in `auth/roblox.cookies.json`, and hands them back at
+  start-up like the Android app, so the account switcher gets back the cookies it set. Signing out from
   Roblox also restarts Nightcap at the sign-in screen, so adding an account that Roblox can only
   add after signing everyone out finishes instead of loading forever.
 - A MangoHud setting under Performance (`performance.mangohud`) launches Nightcap with `MANGOHUD=1`.
@@ -65,6 +68,10 @@ Release notes on GitHub are taken from the matching section here.
   instruction in the game's own code and puts it back, and a thread that calls the game's mouse-lock query
   in between sees the other mouse behaviour, which could jerk the camera during a drag. The probe now runs
   only while a right drag is starting.
+- Roblox web pages such as a game's server list no longer close right after opening on some NVIDIA
+  setups on Wayland. GTK's OpenGL setup crashed those windows, so Nightcap now turns it off for them.
+- Roblox's in-game Switch Server button joins a different server instead of returning you to the
+  home screen. Roblox sends that launch as the game closes, and Nightcap now picks it up.
 - Fleasion replacements load again. With `integrations.fleasion.enabled`, Nightcap sets
   `FFlagAssetProviderUseAssetDeliveryV3` to `False`, so Roblox requests assets through the endpoint
   Fleasion rewrites. A value in `~/.config/mocktail/fflags.json` still wins.

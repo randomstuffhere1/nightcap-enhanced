@@ -1616,6 +1616,39 @@ Status RobloxExperienceComposition::DispatchWebJoinLaunch(
   return Status::Ok();
 }
 
+void RobloxExperienceComposition::DispatchLaunchKeptByMessageBus() {
+  RobloxExperienceLaunchBridge* bridge = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    bridge = bridge_.get();
+  }
+  if (bridge == nullptr) {
+    return;
+  }
+  RobloxExperienceLaunchRequest request;
+  bool found = false;
+  Status status = bridge->ReadLastLaunch(&request, &found);
+  if (!status.ok()) {
+    std::fprintf(stderr,
+                 "[experience] could not read Roblox's last launch request: "
+                 "%s\n",
+                 status.message().c_str());
+    return;
+  }
+  if (!found) {
+    return;
+  }
+  std::fprintf(stderr,
+               "[experience] starting the launch Roblox sent while leaving "
+               "the game place_id=%lld\n",
+               static_cast<long long>(request.place_id));
+  status = Dispatch(request);
+  if (!status.ok()) {
+    std::fprintf(stderr, "[experience] launch request rejected: %s\n",
+                 status.message().c_str());
+  }
+}
+
 Status RobloxExperienceComposition::DrainExternalLaunchRequests() {
   std::size_t available = 0;
   {
@@ -1711,6 +1744,7 @@ Status RobloxExperienceComposition::DrainLaunchRequests() {
       }
     }
     NotifyPresence(RobloxExperiencePresencePhase::kBrowsing, nullptr);
+    DispatchLaunchKeptByMessageBus();
   }
 
   Status external_launch_status = DrainExternalLaunchRequests();

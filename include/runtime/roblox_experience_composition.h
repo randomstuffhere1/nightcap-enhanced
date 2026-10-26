@@ -279,6 +279,7 @@ class RobloxExperienceComposition final {
   Status QueueLaunchRequestLocked(
       const RobloxExperienceLaunchRequest& request);
   Status Dispatch(const RobloxExperienceLaunchRequest& request);
+  void DispatchLaunchKeptByMessageBus();
   Status PromoteAuthenticatedSession();
   Status RefreshLateSurface();
   void PublishPresentedPresence(uint64_t frame_serial);
