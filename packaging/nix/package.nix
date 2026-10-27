@@ -22,6 +22,7 @@
   hicolor-icon-theme,
   libadwaita,
   elfutils,
+  ffmpeg,
   libglvnd,
   libplacebo,
   libpng,
@@ -94,6 +95,7 @@ stdenv.mkDerivation (finalAttrs: {
     hicolor-icon-theme
     libadwaita
     elfutils
+    ffmpeg
     libglvnd
     libplacebo
     libpng

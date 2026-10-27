@@ -22,6 +22,9 @@ Release notes on GitHub are taken from the matching section here.
   `use_new_text_renderer` (let the client draw its own text instead of the host text overlay). Every one is
   absent by default, so a payload nobody measured keeps today's behavior, and each can be overridden with
   `MOCKTAIL_SWAPCHAIN_FIXUP`, `MOCKTAIL_SHADER_FIXUPS` and `MOCKTAIL_NEW_TEXT_RENDERER`.
+- In-game video plays, such as livestream screens in events. It used to stay black because Android's
+  video decoder was missing; Nightcap now decodes H.264, HEVC, VP8 and VP9 with FFmpeg, which is a new
+  dependency. The log shows `[media]` lines for each video.
 - An optional popup shows the game server's location for a few seconds after each join
   (`overlay.location`), and `overlay.location_offset` moves it down. A separate performance
   overlay keeps your frame rate (`overlay.fps`) and ping (`overlay.ping`) on screen, and
@@ -68,6 +71,8 @@ Release notes on GitHub are taken from the matching section here.
   instruction in the game's own code and puts it back, and a thread that calls the game's mouse-lock query
   in between sees the other mouse behaviour, which could jerk the camera during a drag. The probe now runs
   only while a right drag is starting.
+- The security check after Sign In no longer shows a black window on X11 desktops such as Cinnamon. Roblox
+  web pages now use software rendering there too, as on Wayland.
 - Roblox web pages such as a game's server list no longer close right after opening on some NVIDIA
   setups on Wayland. GTK's OpenGL setup crashed those windows, so Nightcap now turns it off for them.
 - Roblox's in-game Switch Server button joins a different server instead of returning you to the

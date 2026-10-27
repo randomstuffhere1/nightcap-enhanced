@@ -41,6 +41,12 @@ grep -Fq 'CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON' "${CMAKE_FILE}" ||
   Fail 'DEB packages do not derive shared-library dependencies'
 grep -Fq 'CPACK_RPM_PACKAGE_AUTOREQPROV ON' "${CMAKE_FILE}" ||
   Fail 'RPM packages do not derive runtime requirements'
+grep -Fq 'CPACK_DEBIAN_PACKAGE_DEPENDS "libavcodec${MOCKTAIL_LIBAVCODEC_MAJOR}' \
+    "${CMAKE_FILE}" ||
+  Fail 'DEB packages do not depend on the libavcodec video opens at runtime'
+grep -Fq 'CPACK_RPM_PACKAGE_REQUIRES "libavcodec.so.${MOCKTAIL_LIBAVCODEC_MAJOR}' \
+    "${CMAKE_FILE}" ||
+  Fail 'RPM packages do not require the libavcodec video opens at runtime'
 grep -Fq 'set(MOCKTAIL_PACKAGE_VERSION' "${CMAKE_FILE}" ||
   Fail 'native package version cannot be set from the release tag'
 grep -Fq 'https://github.com/CoderDayton/nightcap' "${CMAKE_FILE}" ||
@@ -57,6 +63,8 @@ grep -Fq "'libplacebo'" "${PKGBUILD}" ||
   Fail 'Arch package does not declare the graphics composition dependency'
 grep -Fq "'rust'" "${PKGBUILD}" ||
   Fail 'Arch package does not declare the Rust toolchain the kernels need'
+grep -Fq "'ffmpeg'" "${PKGBUILD}" ||
+  Fail 'Arch package does not declare the video decoding dependency'
 grep -Fq 'pkgname=nightcap-git' "${AUR_PKGBUILD}" ||
   Fail 'AUR VCS package name is not stable'
 grep -Fq 'pkgname=nightcap' "${AUR_STABLE_PKGBUILD}" ||
