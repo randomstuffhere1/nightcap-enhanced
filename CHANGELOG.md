@@ -204,9 +204,9 @@ Release notes on GitHub are taken from the matching section here.
 - Fixed Nightcap refusing to start when the saved Roblox session could not be used at all. A cookie that is
   malformed, truncated, or hand-edited was reported as an invalid `.ROBLOSECURITY` cookie and aborted startup,
   leaving no way back in. It is now retired like a rejected one: the unusable value is cleared from the cookie
-  file, the other cookies in it are kept, and Nightcap continues as a guest with a sign-in prompt. This includes
-  a `.ROBLOSECURITY=` with an empty value, which could not be identified by value and so failed the cleanup
-  instead of clearing the cookie.
+  file, the other cookies in it are kept, and Nightcap continues as a guest with a sign-in prompt. This
+  includes a `.ROBLOSECURITY=` with an empty value, which could not be identified by value and so failed
+  the cleanup instead of clearing the cookie.
 - Fixed Roblox 2.742 being rejected as an update, which left the game on the older version. Nightcap now
   accepts Roblox versions that change the order of their start-up steps.
 - Fixed Nightcap reporting Mocktail's version number, 1.0.4, in session logs and support bundles. It now
