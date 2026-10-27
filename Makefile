@@ -22,7 +22,11 @@ RELEASE_BUILD_DIR ?=
 PORTABLE_MODE ?= standalone
 PORTABLE_CANONICAL_MODE := $(if $(filter dynamic minimal,$(PORTABLE_MODE)),thin,$(if $(filter full static,$(PORTABLE_MODE)),standalone,$(PORTABLE_MODE)))
 PORTABLE_DIR ?= dist/mocktail-linux-x86_64-glibc-$(PORTABLE_CANONICAL_MODE)
-APPIMAGE ?= dist/Mocktail-x86_64.AppImage
+# Not ?=: an AppImage session exports APPIMAGE as the path of the running
+# AppImage, and that ambient value must not become the output path, or the
+# build writes over the very binary it was started from. A command line
+# APPIMAGE=... still wins, which is how CI renames the file.
+APPIMAGE := dist/Mocktail-x86_64.AppImage
 APPIMAGE_FORMAT ?= classic
 ANYLINUX_PACKAGER ?= quick-sharun
 ANYLINUX_APPIMAGETOOL ?= appimagetool
