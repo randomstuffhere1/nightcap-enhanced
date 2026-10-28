@@ -509,6 +509,19 @@ const std::vector<SettingsPage>& SettingsPages() {
                  },
                  "",
                  {}},
+                {"graphics.present_mode",
+                 "Present mode",
+                 "How frames reach the display. Automatic follows the VSync "
+                 "setting; anything else here overrides it.",
+                 SettingKind::kChoice,
+                 {
+                     {"auto", "Automatic"},
+                     {"fifo", "FIFO (VSync)"},
+                     {"mailbox", "Mailbox (no tearing)"},
+                     {"immediate", "Immediate (no VSync)"},
+                 },
+                 "auto",
+                 {}},
                 {"graphics.quality",
                  "Graphics quality",
                  "Roblox's own graphics level. Higher asks for more shadow and "
