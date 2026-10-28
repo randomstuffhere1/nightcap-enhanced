@@ -264,6 +264,8 @@ You can also edit the file by hand. Useful options:
 
 - `graphics.frame_rate_limit: display` to unlock FPS to your monitor's rate.
 - `graphics.vsync: off` for the lowest lag, at the cost of tearing.
+- `graphics.present_mode: fifo`, `mailbox`, or `immediate` to pick the
+  presentation mode yourself instead of letting `graphics.vsync` decide.
 - `graphics.backend: opengl` if Vulkan does not work on your GPU.
 - `graphics.quality: 1` to `6` to override Roblox's graphics level, or `auto`
   to leave it to the client.

@@ -443,6 +443,7 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
   config.pipeline_cache_mode_ =
       environment.GetOr("MOCKTAIL_PIPELINE_CACHE_MODE", "on");
   config.mangohud_ = environment.GetOr("MANGOHUD", "0") == "1";
+  config.present_mode_ = environment.GetOr("MOCKTAIL_PRESENT_MODE", "auto");
   config.performance_ = ParsePerformancePolicy(
       environment.GetOr("MOCKTAIL_MULTITHREADED_RENDERING", "0"),
       environment.GetOr("MOCKTAIL_MEMORY_LIMIT_MB", "0"),

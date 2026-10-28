@@ -586,6 +586,12 @@ not block the render thread on the display refresh, so the frame rate is
 governed by the in-game cap rather than by presentation. `off` selects
 `IMMEDIATE` and does not synchronize at all.
 
+`graphics.present_mode` (default `auto`) overrides that choice outright with
+`fifo`, `mailbox`, or `immediate`, on the Vulkan swapchain and on the EGL path
+alike. A driver that cannot provide the requested mode fails the launch rather
+than presenting another way, so leave it on `auto` unless you need a specific
+mode.
+
 If the frame rate is higher than your refresh rate, the extra frames are work
 you cannot see. Lower the in-game cap to your refresh rate first.
 

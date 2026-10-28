@@ -198,9 +198,11 @@ struct Field {
   std::string_view literals;
 };
 
-constexpr std::array<Field, 2> kGraphicsFields{
+constexpr std::array<Field, 3> kGraphicsFields{
     Field{"graphics.vsync", "MOCKTAIL_VSYNC", FieldKind::kEnum, 0, 0,
           "auto on off"},
+    Field{"graphics.present_mode", "MOCKTAIL_PRESENT_MODE", FieldKind::kEnum, 0,
+          0, "auto fifo mailbox immediate"},
     Field{"graphics.pipeline_cache", "MOCKTAIL_PIPELINE_CACHE_MODE",
           FieldKind::kEnum, 0, 0, "on off clear"},
 };
@@ -1057,6 +1059,9 @@ RuntimeConfigLoadResult LoadRuntimeConfig(
              result.config.vsync_mode() != "on" &&
              result.config.vsync_mode() != "off") {
     result.error = "VSync policy is invalid";
+  } else if (!RuntimeConfig::IsValidPresentMode(result.config.present_mode())) {
+    result.error =
+        "graphics.present_mode must be auto, fifo, mailbox, or immediate";
   } else if (!result.config.audio_output_device_valid()) {
     result.error = "audio output device is invalid";
   } else if (!result.config.audio_input_device_valid()) {
@@ -1081,6 +1086,10 @@ RuntimeConfigLoadResult LoadRuntimeConfig(
 
 bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
                                     std::string* error) {
+  if (!RuntimeConfig::IsValidPresentMode(config.present_mode())) {
+    if (error != nullptr) *error = "cannot export an invalid present mode";
+    return false;
+  }
   if (!config.fleasion_valid()) {
     if (error != nullptr) *error = "cannot export invalid Fleasion configuration";
     return false;
@@ -1214,6 +1223,8 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",
                           FrameRateValue(config.frame_rate()), error) &&
       SetEnvironmentValue("MOCKTAIL_VSYNC", config.vsync_mode(), error) &&
+      SetEnvironmentValue("MOCKTAIL_PRESENT_MODE", config.present_mode(),
+                          error) &&
       SetEnvironmentValue("MOCKTAIL_PIPELINE_CACHE_MODE",
                           config.pipeline_cache_mode(), error) &&
       SetEnvironmentValue("MOCKTAIL_GRAPHICS_QUALITY",

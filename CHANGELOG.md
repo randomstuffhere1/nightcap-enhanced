@@ -43,6 +43,9 @@ Release notes on GitHub are taken from the matching section here.
   Roblox also restarts Nightcap at the sign-in screen, so adding an account that Roblox can only
   add after signing everyone out finishes instead of loading forever.
 - A MangoHud setting under Performance (`performance.mangohud`) launches Nightcap with `MANGOHUD=1`.
+- `graphics.present_mode` chooses the swapchain present mode outright: `fifo`, `mailbox`, or `immediate`.
+  An explicit mode overrides `graphics.vsync` on both the Vulkan and OpenGL paths, and a driver that cannot
+  provide it fails the launch instead of silently presenting some other way.
 - Buying Robux opens roblox.com/upgrades/robux in your browser, since Nightcap has no Google
   Play. This works from a package on the Robux page and from a game's purchase prompt. The game is
   told nothing was bought, so its prompt closes instead of waiting. A desktop notification says
@@ -51,6 +54,13 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Fixed
 
+- A window size saved by an earlier session no longer overrides a size configured explicitly afterwards, such
+  as a new `window.width` or a command-line size. The saved state records the size it was saved under and is
+  restored only while that still matches.
+- A JNI call carrying a string reference that is neither a live handle nor a raw pointer no longer reads it as
+  a pointer and crashes the client. Such a string is treated as empty.
+- Wrapped text in a text box keeps its trailing spaces while it draws, so Center and Right alignment keep the
+  glyphs where Roblox's own layout put them instead of shifting them left as a space is typed.
 - Releasing a right-click camera drag while the mouse is still moving no longer snaps the camera to a
   new angle. The drag's remaining motion arrives after the release, and every one of those events used to
   carry its distance on as camera input; only relative (captured) motion is look input now.

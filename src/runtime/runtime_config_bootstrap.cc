@@ -72,6 +72,12 @@ graphics:
   # unless frame_rate_limit is unlimited.
   # vsync: off
   #
+  # String (default: auto): pick the swapchain's present mode outright instead
+  # of letting vsync decide. fifo, mailbox, and immediate override vsync; a
+  # driver that cannot provide the requested mode fails the launch instead of
+  # silently presenting another way.
+  # present_mode: auto
+  #
   # String (default: on): keep a fallback copy of the driver's pipeline cache.
   # The Roblox client already persists its own shadercachevk.bin and passes it
   # to the driver, so on a stock client this does nothing and the setting only

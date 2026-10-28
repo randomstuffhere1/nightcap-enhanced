@@ -193,6 +193,11 @@ class RuntimeConfig {
   }
   const FrameRatePolicy& frame_rate() const { return frame_rate_; }
   const std::string& vsync_mode() const { return vsync_mode_; }
+  const std::string& present_mode() const { return present_mode_; }
+  static bool IsValidPresentMode(std::string_view mode) {
+    return mode == "auto" || mode == "fifo" || mode == "mailbox" ||
+           mode == "immediate";
+  }
   // on, off, or clear. Read by the Vulkan adapter through the environment.
   const std::string& pipeline_cache_mode() const {
     return pipeline_cache_mode_;
@@ -272,6 +277,7 @@ class RuntimeConfig {
   std::optional<std::string> roblox_http_user_agent_;
   FrameRatePolicy frame_rate_;
   std::string vsync_mode_ = "auto";
+  std::string present_mode_ = "auto";
   std::string pipeline_cache_mode_ = "on";
   GraphicsQualityConfig graphics_quality_;
   std::uint64_t texture_memory_mb_ = 0;
