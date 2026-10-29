@@ -107,16 +107,7 @@ the list below and nothing else. In a clone with both remotes,
 - **`window.close_on_leave`** closes Nightcap when you leave an experience
   rather than leaving it open on the Roblox home screen.
 
-## Install with Flatpak
-
-```bash
-flatpak install --user https://coderdayton.github.io/nightcap/nightcap.flatpakref
-flatpak run io.github.CoderDayton.nightcap
-```
-
-Updates arrive through `flatpak update`. Nightcap is not on Flathub yet.
-
-## AppImage
+## Install with AppImage
 
 Grab the AppImage from the
 [latest release](https://github.com/CoderDayton/nightcap/releases/latest),
@@ -126,6 +117,25 @@ make it executable, and run it:
 chmod +x Nightcap-x86_64.AppImage
 ./Nightcap-x86_64.AppImage
 ```
+
+## Install on Arch Linux from the AUR
+
+[`nightcap-git`](https://aur.archlinux.org/packages/nightcap-git) builds the
+current `main` branch. It is maintained by
+[@dim-ghub](https://github.com/dim-ghub):
+
+```bash
+paru -S nightcap-git    # or: yay -S nightcap-git
+```
+
+## Install with Flatpak
+
+```bash
+flatpak install --user https://coderdayton.github.io/nightcap/nightcap.flatpakref
+flatpak run io.github.CoderDayton.nightcap
+```
+
+Updates arrive through `flatpak update`. Nightcap is not on Flathub yet.
 
 ## Distribution packages
 
@@ -141,14 +151,6 @@ sudo pacman -U nightcap-<version>-1-x86_64.pkg.tar.zst
 
 They install `/usr/bin/mocktail`, so they conflict with upstream's `mocktail`
 package.
-
-On Arch Linux, [`nightcap-git`](https://aur.archlinux.org/packages/nightcap-git)
-is on the AUR. It builds the current `main` branch and is maintained by
-[@dim-ghub](https://github.com/dim-ghub):
-
-```bash
-yay -S nightcap-git
-```
 
 Nightcap is in no other distribution repository.
 
@@ -271,8 +273,9 @@ You can also edit the file by hand. Useful options:
   to leave it to the client.
 - `performance.texture_memory_mb` to raise or lower the texture budget Roblox
   is told about. 0 keeps the automatic figure.
-- `performance.small_texture_upscale` to change how much small compressed
-  textures are enlarged, `1` to `8`. `1` turns it off.
+- `graphics.small_texture_upscale` to change how much small compressed
+  textures are enlarged: `adaptive` (the default), `1`, `2` or `4`. `1` turns
+  it off.
 - `performance.multithreaded_rendering: true` to size Roblox's worker queues
   from every physical core.
 - `graphics.pipeline_cache: clear` to drop the fallback pipeline cache and run
@@ -414,12 +417,13 @@ Run Nightcap without `hardened_malloc` enabled.
 
 ## Support
 
-Support this fork by giving it a star or with cryptocurrency:
+Support this fork by giving it a star or with:
 
-- LTC: `LdABR2ELRYrUESWZWrEk1uNx38gHHMuHUU`
-- SOL: `tjeDnPoWeyW8zfTf8c5CVAm5QTV8vFPaPouaScAdwfT`
+<a href='https://ko-fi.com/U7U01WTJF9' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi2.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
 
-Support the upstream project, which does most of the heavy lifting:
+LTC: `LdABR2ELRYrUESWZWrEk1uNx38gHHMuHUU`
+
+Support the upstream project:
 
 - USDT (TON): `UQCi6Yzcc9cOctoij6n_r1K90-OdVxAT0D_xo2UzGKkQaJDY`
 - USDT (TRC20): `TNPMG9Vig2xiuo2r1QqnXRChPH7Vu28Jmx`

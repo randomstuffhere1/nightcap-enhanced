@@ -25,6 +25,13 @@ Setting Live(Setting setting) {
   return setting;
 }
 
+Setting ConfirmOff(Setting setting, std::string_view title,
+                   std::string_view body) {
+  setting.confirm_off_title = title;
+  setting.confirm_off_body = body;
+  return setting;
+}
+
 // The touch switch. The file holds it inside the device block, which the
 // loader does not let input.touch_enabled be combined with.
 constexpr std::string_view kTouchKey = "device.touch";
@@ -509,6 +516,35 @@ const std::vector<SettingsPage>& SettingsPages() {
                  },
                  "",
                  {}},
+                ConfirmOff(
+                  {"graphics.texture_compression",
+                  "Compress Textures",
+                  "Keeps textures compressed on the GPU to conserve video memory. "
+                  "Disable if you experience texture glitches. Requires a restart.",
+                  SettingKind::kToggle,
+                  {},
+                  "true",
+                  {}},
+                  "Turn Off Texture Compression?",
+                  "You lose:\n"
+                  "• Up to 50% VRAM savings\n\n"
+                  "You gain:\n"
+                  "• May fix broken or black textures\n\n"
+                  "Requires a restart to take effect."),
+                {"graphics.small_texture_upscale",
+                 "Small texture upscale",
+                 "Sharpens textures of 64px or less. Adaptive picks the "
+                 "factor from your GPU's speed and holds back while it is "
+                 "busy. Requires a restart.",
+                 SettingKind::kChoice,
+                 {
+                     {"adaptive", "Adaptive"},
+                     {"1", "1× (off)"},
+                     {"2", "2×"},
+                     {"4", "4×"},
+                 },
+                 "adaptive",
+                 {}},
                 {"graphics.present_mode",
                  "Present mode",
                  "How frames reach the display. Automatic follows the VSync "
@@ -813,24 +849,6 @@ const std::vector<SettingsPage>& SettingsPages() {
                  2047,
                  16,
                  "Automatic"},
-                {"performance.small_texture_upscale",
-                 "Small texture upscale",
-                 "Redraws small compressed textures at N times their size so "
-                 "they are not blurry on a desktop display. Higher values cost "
-                 "GPU memory and bandwidth on every frame that uses one.",
-                 SettingKind::kChoice,
-                 {
-                     {"1", "Off"},
-                     {"2", "2x"},
-                     {"3", "3x"},
-                     {"4", "4x"},
-                     {"5", "5x"},
-                     {"6", "6x"},
-                     {"7", "7x"},
-                     {"8", "8x"},
-                 },
-                 "4",
-                 {}},
             }},
        }},
       {"audio",
@@ -1528,15 +1546,7 @@ FFlagsDocument::FFlagsDocument(std::filesystem::path file)
     : file_(std::move(file)) {}
 
 runtime::RuntimeConfigText FFlagsDocument::Read() const {
-  // No more of the file is read than Nightcap itself reads.
-  runtime::RuntimeConfigText read = runtime::ReadOptionalTextFile(
-      file_, static_cast<std::size_t>(services::kMaximumFflagsFileBytes));
-  if (read && read.text.size() > services::kMaximumFflagsFileBytes) {
-    read.error = "fflags.json is larger than 64 KiB, the most Nightcap "
-                 "reads. Shorten or remove " +
-                 file_.string();
-  }
-  return read;
+  return runtime::ReadOptionalTextFile(file_);
 }
 
 bool FFlagsDocument::Load(std::string* error) {

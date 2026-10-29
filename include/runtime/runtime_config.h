@@ -193,6 +193,12 @@ class RuntimeConfig {
   }
   const FrameRatePolicy& frame_rate() const { return frame_rate_; }
   const std::string& vsync_mode() const { return vsync_mode_; }
+  // Keep ETC2/EAC textures compressed as BC7/BC4/BC5 on the GPU.
+  bool texture_compression() const { return texture_compression_; }
+  // "adaptive", or a fixed factor for textures of 64px or less.
+  const std::string& small_texture_upscale() const {
+    return small_texture_upscale_;
+  }
   const std::string& present_mode() const { return present_mode_; }
   static bool IsValidPresentMode(std::string_view mode) {
     return mode == "auto" || mode == "fifo" || mode == "mailbox" ||
@@ -212,13 +218,6 @@ class RuntimeConfig {
   // 0 means "let the texture policy decide from host RAM".
   std::uint64_t texture_memory_mb() const { return texture_memory_mb_; }
   bool texture_memory_valid() const { return texture_memory_valid_; }
-  // The ETC2 small-texture upscale factor, 1 to 8. 1 disables it.
-  std::uint32_t small_texture_upscale() const {
-    return small_texture_upscale_;
-  }
-  bool small_texture_upscale_valid() const {
-    return small_texture_upscale_valid_;
-  }
   // SDL audio device buffer size in frames, or 0 for the SDL default.
   int audio_buffer_samples() const { return audio_buffer_samples_; }
   bool audio_buffer_valid() const { return audio_buffer_valid_; }
@@ -277,13 +276,13 @@ class RuntimeConfig {
   std::optional<std::string> roblox_http_user_agent_;
   FrameRatePolicy frame_rate_;
   std::string vsync_mode_ = "auto";
+  bool texture_compression_ = true;
+  std::string small_texture_upscale_ = "adaptive";
   std::string present_mode_ = "auto";
   std::string pipeline_cache_mode_ = "on";
   GraphicsQualityConfig graphics_quality_;
   std::uint64_t texture_memory_mb_ = 0;
   bool texture_memory_valid_ = true;
-  std::uint32_t small_texture_upscale_ = 4;
-  bool small_texture_upscale_valid_ = true;
   int audio_buffer_samples_ = 0;
   bool audio_buffer_valid_ = true;
   PerformancePolicy performance_;

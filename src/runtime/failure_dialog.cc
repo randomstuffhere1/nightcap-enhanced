@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "runtime/helper_environment.h"
 #include "runtime/helper_program.h"
 
 extern char** environ;
@@ -66,8 +67,10 @@ bool SpawnOneShot(const std::filesystem::path& helper,
   char* arguments[] = {helper_string.data(), option_string.data(),
                        message_string.data(), nullptr};
   pid_t child = -1;
+  const auto child_environment = BuildHelperEnvironment(environ);
   const int spawn_status =
-      posix_spawn(&child, helper.c_str(), nullptr, nullptr, arguments, environ);
+      posix_spawn(&child, helper.c_str(), nullptr, nullptr, arguments,
+                   child_environment.data());
   if (spawn_status != 0) {
     return false;
   }
@@ -226,8 +229,9 @@ std::pair<int, int> SpawnMonitor(const std::filesystem::path& helper) {
   pid_t child = -1;
   int spawn_status = action_status;
   if (spawn_status == 0) {
+    const auto child_environment = BuildHelperEnvironment(environ);
     spawn_status = posix_spawn(&child, helper.c_str(), &actions, nullptr,
-                               arguments, environ);
+                               arguments, child_environment.data());
   }
   posix_spawn_file_actions_destroy(&actions);
   close(sockets[1]);

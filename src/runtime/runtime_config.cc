@@ -440,6 +440,10 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
   config.frame_rate_ = ParseFrameRatePolicy(
       environment.GetOr("MOCKTAIL_FRAME_RATE_LIMIT", "-1"));
   config.vsync_mode_ = environment.GetOr("MOCKTAIL_VSYNC", "auto");
+  config.texture_compression_ =
+      environment.GetOr("MOCKTAIL_ETC2_BC_TRANSCODE", "1") != "0";
+  config.small_texture_upscale_ =
+      environment.GetOr("MOCKTAIL_SMALL_TEXTURE_UPSCALE", "adaptive");
   config.pipeline_cache_mode_ =
       environment.GetOr("MOCKTAIL_PIPELINE_CACHE_MODE", "on");
   config.mangohud_ = environment.GetOr("MANGOHUD", "0") == "1";
@@ -459,14 +463,6 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
                          &config.texture_memory_mb_);
   if (!config.texture_memory_valid_) {
     config.texture_memory_mb_ = 0;
-  }
-  {
-    std::uint32_t upscale = 0;
-    config.small_texture_upscale_valid_ = ParseBoundedUnsigned(
-        environment.GetOr("MOCKTAIL_SMALL_TEXTURE_UPSCALE", "4"), 1, 8,
-        &upscale);
-    config.small_texture_upscale_ =
-        config.small_texture_upscale_valid_ ? upscale : 4;
   }
   {
     std::uint32_t samples = 0;

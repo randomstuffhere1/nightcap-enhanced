@@ -120,6 +120,27 @@ TEST_F(SettingsModelTest, PagesListEverySettingOnce) {
                         "Network", "Discord", "Fleasion", "Advanced"}));
 }
 
+TEST_F(SettingsModelTest, OnlyTextureCompressionAsksBeforeItIsTurnedOff) {
+  int asking = 0;
+  for (const SettingsPage& page : SettingsPages()) {
+    for (const SettingsGroup& group : page.groups) {
+      for (const Setting& setting : group.settings) {
+        if (setting.confirm_off_body.empty()) {
+          EXPECT_TRUE(setting.confirm_off_title.empty()) << setting.key;
+          continue;
+        }
+        ++asking;
+        EXPECT_EQ(setting.key, "graphics.texture_compression");
+        EXPECT_EQ(setting.kind, SettingKind::kToggle);
+        EXPECT_FALSE(setting.confirm_off_title.empty());
+        EXPECT_NE(setting.confirm_off_body.find("VRAM"),
+                  std::string_view::npos);
+      }
+    }
+  }
+  EXPECT_EQ(asking, 1);
+}
+
 TEST_F(SettingsModelTest, EveryConfigKeyHasARow) {
   // Every key the loader and the updater accept, and the row that sets it.
   std::vector<std::pair<std::string_view, std::string_view>> keys = {
@@ -137,6 +158,7 @@ TEST_F(SettingsModelTest, EveryConfigKeyHasARow) {
            "device.keyboard", "runtime.headless", "runtime.roblox_library",
            "appearance.theme", "graphics.backend", "graphics.frame_rate_limit",
            "graphics.vsync", "graphics.present_mode",
+           "graphics.texture_compression", "graphics.small_texture_upscale",
            "performance.multithreaded_rendering",
            "performance.physics_worker_mode", "performance.memory_limit_mb",
            "performance.gamemode", "performance.mangohud",
@@ -769,13 +791,13 @@ TEST_F(SettingsModelTest, AnFFlagsFileThatIsNotTextIsNotOpened) {
   }
 }
 
-TEST_F(SettingsModelTest, AnFFlagsFileOverTheReadLimitIsNotOpened) {
+TEST_F(SettingsModelTest, AnFFlagsFileLargerThan64KiBIsOpened) {
   const std::string bytes = "{}" + std::string(64 * 1024, ' ');
   std::ofstream(FFlagsFile(), std::ios::binary) << bytes;
   FFlagsDocument document(FFlagsFile());
   std::string error;
-  EXPECT_FALSE(document.Load(&error));
-  EXPECT_NE(error.find("64 KiB"), std::string::npos) << error;
+  EXPECT_TRUE(document.Load(&error)) << error;
+  EXPECT_EQ(document.Text(), bytes);
   EXPECT_EQ(ReadFFlags(), bytes);
 }
 

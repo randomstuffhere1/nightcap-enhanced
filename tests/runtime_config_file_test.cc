@@ -833,7 +833,6 @@ graphics:
   quality: 2
 performance:
   texture_memory_mb: 4096
-  small_texture_upscale: 2
 audio:
   buffer_samples: 512
 )yaml");
@@ -843,7 +842,6 @@ audio:
   EXPECT_FALSE(loaded.config.graphics_quality().automatic);
   EXPECT_EQ(loaded.config.graphics_quality().level, 2);
   EXPECT_EQ(loaded.config.texture_memory_mb(), 4096U);
-  EXPECT_EQ(loaded.config.small_texture_upscale(), 2U);
   EXPECT_EQ(loaded.config.audio_buffer_samples(), 512);
 }
 
@@ -856,7 +854,6 @@ TEST(RuntimeConfigFileTest, DefaultsForEveryNewPerformanceSetting) {
   // An absent key must keep the shipped behaviour, not change it.
   EXPECT_TRUE(loaded.config.graphics_quality().automatic);
   EXPECT_EQ(loaded.config.texture_memory_mb(), 0U);
-  EXPECT_EQ(loaded.config.small_texture_upscale(), 4U);
   EXPECT_EQ(loaded.config.audio_buffer_samples(), 0);
 }
 
@@ -874,12 +871,6 @@ TEST(RuntimeConfigFileTest, RejectsOutOfRangePerformanceSettings) {
                 "performance.texture_memory_mb"},
            Case{"performance:\n  texture_memory_mb: 999999\n",
                 "performance.texture_memory_mb"},
-           Case{"performance:\n  small_texture_upscale: 0\n",
-                "performance.small_texture_upscale"},
-           Case{"performance:\n  small_texture_upscale: 9\n",
-                "performance.small_texture_upscale"},
-           Case{"performance:\n  small_texture_upscale: 4x\n",
-                "performance.small_texture_upscale"},
            Case{"audio:\n  buffer_samples: -1\n", "audio.buffer_samples"},
            Case{"audio:\n  buffer_samples: 99999\n", "audio.buffer_samples"},
        }) {
@@ -1673,6 +1664,154 @@ TEST(RuntimeConfigFileTest, ValidatesAndExportsPresentModes) {
   EXPECT_FALSE(ExportRuntimeConfigEnvironment(
       RuntimeConfig::FromEnvironment(invalid), &error));
   unsetenv("MOCKTAIL_PRESENT_MODE");
+}
+
+TEST(RuntimeConfigFileTest, LoadsTextureCompressionFromFile) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+graphics:
+  texture_compression: false
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_FALSE(loaded.config.texture_compression());
+}
+
+TEST(RuntimeConfigFileTest, ExportsTextureCompressionPolicy) {
+  unsetenv("MOCKTAIL_ETC2_BC_TRANSCODE");
+  std::string error;
+  const RuntimeConfig enabled =
+      RuntimeConfig::FromEnvironment(MapEnvironment());
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(enabled, &error)) << error;
+  ASSERT_NE(getenv("MOCKTAIL_ETC2_BC_TRANSCODE"), nullptr);
+  EXPECT_STREQ(getenv("MOCKTAIL_ETC2_BC_TRANSCODE"), "1");
+
+  const RuntimeConfig disabled = RuntimeConfig::FromEnvironment(
+      MapEnvironment({{"MOCKTAIL_ETC2_BC_TRANSCODE", "0"}}));
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(disabled, &error)) << error;
+  EXPECT_STREQ(getenv("MOCKTAIL_ETC2_BC_TRANSCODE"), "0");
+  unsetenv("MOCKTAIL_ETC2_BC_TRANSCODE");
+}
+
+TEST(RuntimeConfigFileTest, LoadsSmallTextureUpscaleFromFile) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+graphics:
+  small_texture_upscale: 2
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_EQ(loaded.config.small_texture_upscale(), "2");
+}
+
+TEST(RuntimeConfigFileTest, ExportsSmallTextureUpscale) {
+  unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
+  std::string error;
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(
+      RuntimeConfig::FromEnvironment(MapEnvironment()), &error))
+      << error;
+  ASSERT_NE(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), nullptr);
+  EXPECT_STREQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), "adaptive");
+
+  ASSERT_TRUE(ExportRuntimeConfigEnvironment(
+      RuntimeConfig::FromEnvironment(
+          MapEnvironment({{"MOCKTAIL_SMALL_TEXTURE_UPSCALE", "4"}})),
+      &error))
+      << error;
+  EXPECT_STREQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), "4");
+  unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
+}
+
+TEST(RuntimeConfigFileTest, RetiredPerformanceSmallTextureUpscaleStillLoads) {
+  // The fork used to file this under performance, with a 1-8 range. A config
+  // written by an older build has to keep loading and keep its meaning.
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+performance:
+  small_texture_upscale: 3
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_EQ(loaded.config.small_texture_upscale(), "3");
+}
+
+TEST(RuntimeConfigFileTest, GraphicsSmallTextureUpscaleWinsOverTheRetiredKey) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+graphics:
+  small_texture_upscale: 2
+performance:
+  small_texture_upscale: 8
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  ASSERT_TRUE(loaded) << loaded.error;
+  EXPECT_EQ(loaded.config.small_texture_upscale(), "2");
+}
+
+TEST(RuntimeConfigFileTest, RejectsOutOfRangeRetiredSmallTextureUpscale) {
+  for (const char* value : {"0", "9", "4x"}) {
+    SCOPED_TRACE(value);
+    TemporaryDirectory temporary;
+    const std::filesystem::path file = temporary.Write(
+        std::string("version: 1\nperformance:\n  small_texture_upscale: ") +
+        value + "\n");
+
+    const RuntimeConfigLoadResult loaded =
+        LoadRuntimeConfig(MapEnvironment(), file);
+
+    EXPECT_FALSE(loaded);
+    EXPECT_NE(loaded.error.find("performance.small_texture_upscale"),
+              std::string::npos);
+  }
+}
+
+TEST(RuntimeConfigFileTest, RejectsUnsupportedSmallTextureUpscale) {
+  for (const char* value : {"3", "8", "fast"}) {
+    SCOPED_TRACE(value);
+    TemporaryDirectory temporary;
+    const std::filesystem::path file = temporary.Write(
+        std::string("version: 1\ngraphics:\n  small_texture_upscale: ") +
+        value + "\n");
+
+    const RuntimeConfigLoadResult loaded =
+        LoadRuntimeConfig(MapEnvironment(), file);
+
+    EXPECT_FALSE(loaded);
+    EXPECT_NE(loaded.error.find("graphics.small_texture_upscale"),
+              std::string::npos);
+  }
+}
+
+TEST(RuntimeConfigFileTest, RejectsNonBooleanTextureCompression) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(R"yaml(
+version: 1
+graphics:
+  texture_compression: maybe
+)yaml");
+
+  const RuntimeConfigLoadResult loaded =
+      LoadRuntimeConfig(MapEnvironment(), file);
+
+  EXPECT_FALSE(loaded);
+  EXPECT_NE(loaded.error.find("graphics.texture_compression"),
+            std::string::npos);
 }
 
 TEST(RuntimeConfigFileTest, RejectsNonBooleanPerformancePolicy) {

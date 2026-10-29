@@ -23,8 +23,9 @@ Release notes on GitHub are taken from the matching section here.
   absent by default, so a payload nobody measured keeps today's behavior, and each can be overridden with
   `MOCKTAIL_SWAPCHAIN_FIXUP`, `MOCKTAIL_SHADER_FIXUPS` and `MOCKTAIL_NEW_TEXT_RENDERER`.
 - In-game video plays, such as livestream screens in events. It used to stay black because Android's
-  video decoder was missing; Nightcap now decodes H.264, HEVC, VP8 and VP9 with FFmpeg, which is a new
-  dependency. The log shows `[media]` lines for each video.
+  video decoder was missing; Nightcap now decodes H.264, HEVC, VP8 and VP9 video and AAC audio with
+  FFmpeg, which is a new dependency. Videos with a sound track no longer fail to load. The log shows
+  `[media]` lines for each video.
 - An optional popup shows the game server's location for a few seconds after each join
   (`overlay.location`), and `overlay.location_offset` moves it down. A separate performance
   overlay keeps your frame rate (`overlay.fps`) and ping (`overlay.ping`) on screen, and
@@ -114,13 +115,27 @@ Release notes on GitHub are taken from the matching section here.
   a download server, the error points to a new FAQ entry with the commands to switch DNS servers.
 - PCs with 4 GB of RAM now get a larger texture budget instead of Roblox's 64 MB mobile default.
   The budget now applies to any PC with at least 2 GB, at an eighth of its memory.
+- Large `fflags.json` files load, and the settings window opens them. Both used to refuse a file over
+  64 KiB.
 
 ### Changed
 
 - ETC2 textures now decode on the graphics card instead of the CPU, so loading them no longer takes CPU
-  time from the game. Small upscaled textures and texture overrides still decode on the CPU. A self-test
-  at startup falls back to the CPU if the card's output differs, and `MOCKTAIL_ETC2_GPU_DECODE=0` turns
-  it off.
+  time from the game. Only textures the size of an override still decode on the CPU. Override files
+  must now be named `<hash>_<width>x<height>.png` with the original size, as the dump names them;
+  a bare `<hash>.png` is skipped and logged. A self-test at startup falls back to
+  the CPU if the card's output differs, and `MOCKTAIL_ETC2_GPU_DECODE=0` turns it off. Cards with BC
+  texture support keep these textures compressed as BC7, BC4 or BC5, in a quarter of the video memory,
+  and small upscaled textures too. The Compress textures setting (`graphics.texture_compression`) or
+  `MOCKTAIL_ETC2_BC_TRANSCODE=0` keeps them decoded.
+- Small textures are upscaled on the graphics card with a smoothing filter that keeps hard two-colour
+  edges sharp, instead of nearest-neighbour on the CPU. The Small texture upscale setting
+  (`graphics.small_texture_upscale`) offers Adaptive, 1×, 2× or 4×. Adaptive, the default, times the
+  card's BC7 encoder at startup (decode and scale with Compress textures off) and picks up to 4×,
+  or 1× when it can't measure. While textures load, it steps new ones down, or
+  keeps them uncompressed, once encoding would take more than a tenth of the GPU's time, so slower
+  cards no longer stutter with Compress textures on. The log shows the measured speed and what was
+  held back.
 
 
 ## [0.4.0] - 2026-10-18
@@ -317,8 +332,6 @@ Release notes on GitHub are taken from the matching section here.
   automatic range. The ceiling is 2047 MiB, because the client reads the budget through a signed 32-bit
   setting, so this lowers the budget or nudges it up rather than handing a large GPU many gigabytes. The
   resolved budget is printed at startup, which the automatic path did not do.
-- `performance.small_texture_upscale` promotes the existing `MOCKTAIL_SMALL_TEXTURE_UPSCALE` environment
-  variable to a documented setting, with the range and the cost stated.
 - A starved-refill counter for audio, reported once at shutdown. SDL has no underrun callback, so starvation
   is counted where it is visible: a device refill that ended with less than the engine owed. A large count is
   a latency problem that no frame-time number would explain.

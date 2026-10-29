@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "mocktail/graphics/etc2_decoder.h"
+#include "mocktail/graphics/etc2_gpu_decoder.h"
 
 namespace mocktail::graphics {
 
@@ -50,15 +51,55 @@ struct EmulatedTextureBytes {
 bool Etc2SupportAdvertised(const char* value);
 bool Etc2SupportAdvertised();
 
+// Whether ETC2/EAC images are kept compressed as BC7/BC4/BC5 where the GPU
+// supports it, from the MOCKTAIL_ETC2_BC_TRANSCODE value: "0" keeps them
+// decoded, anything else (or unset) transcodes.
+bool Etc2BcTranscodeEnabled(const char* value);
+
 // Factor applied to emulated ETC2 colour images no larger than
 // kSmallTextureMaxExtent, from the MOCKTAIL_SMALL_TEXTURE_UPSCALE value:
 // 1 leaves them alone; 2..8 create them that many times larger and resample
 // every upload, so a texture override can carry more detail than the
-// original. Unset or non-numeric values use kDefaultSmallTextureUpscale;
-// numeric values out of range are clamped.
+// original. Unset or non-numeric values ("adaptive") return
+// kAdaptiveSmallTextureUpscale; numeric values out of range are clamped.
 inline constexpr std::uint32_t kSmallTextureMaxExtent = 64;
 inline constexpr std::uint32_t kDefaultSmallTextureUpscale = 4;
+inline constexpr std::uint32_t kAdaptiveSmallTextureUpscale = 0;
 std::uint32_t SmallTextureUpscale(const char* value);
+
+// Every mip level and layer; `scale` multiplies level-0 width and height.
+VkDeviceSize Etc2HostBlockCount(const VkExtent3D& extent,
+                                std::uint32_t mip_levels, std::uint32_t layers,
+                                std::uint32_t scale);
+
+// The largest of 4, 2 and 1, the factors the setting offers, whose 64x64 BC7
+// chain encodes within kAdaptiveUpscaleTextureNs; 0 ns (unmeasured) gives 1,
+// as an unknown card may be too slow for any upscale.
+inline constexpr double kAdaptiveUpscaleTextureNs = 0.5e6;
+std::uint32_t AdaptiveSmallTextureUpscale(double upscale_ns);
+
+// GPU-time token bucket. A cost above the burst runs from a full bucket and
+// leaves it negative until wall time pays it back. Take asks before work is
+// planned; Charge books work already recorded; Refund returns a Take whose
+// work never ran.
+inline constexpr double kEncodeBudgetShare = 0.1;
+inline constexpr double kEncodeBudgetBurstNs = 16e6;
+class Etc2EncodeBudget {
+ public:
+  Etc2EncodeBudget(double share, double burst_ns)
+      : share_(share), burst_ns_(burst_ns), available_ns_(burst_ns) {}
+  bool Take(double cost_ns, std::uint64_t now_ns);
+  void Charge(double cost_ns, std::uint64_t now_ns);
+  void Refund(double cost_ns);
+
+ private:
+  void Refill(std::uint64_t now_ns);
+
+  double share_;
+  double burst_ns_;
+  double available_ns_;
+  std::uint64_t last_ns_ = 0;
+};
 
 // Staging for decoded uploads is carved out of host-visible blocks this
 // large; an upload that needs more gets a block of its own.
@@ -72,6 +113,10 @@ struct Etc2SubmitWait {
   std::uint64_t value = 0;
   std::vector<VkCommandBuffer> decode_commands;
 };
+
+// How many times this process has hit the ETC2 failure `message`, including
+// the times past its log cap.
+std::uint64_t Etc2FailureCount(const char* message);
 
 // Reports ETC2/EAC support on hosts without native ETC2 (desktop GPUs) and
 // stores those textures decoded. Images are created with the host format;
@@ -96,11 +141,15 @@ class VulkanEtc2Emulation final {
   // `timeline_semaphore` states whether the device was created with the
   // timelineSemaphore feature enabled. Without it every decode runs on the
   // calling thread.
+  // `bc_textures`: the device has textureCompressionBC enabled, so once the
+  // transcode self-test passes, images become BC7/BC4/BC5. Upscaled images,
+  // texture overrides, and usages or flags BC lacks stay decoded.
   void RegisterDevice(VkDevice device, VkPhysicalDevice physical_device,
                       bool emulated,
                       const VkPhysicalDeviceMemoryProperties& memory,
                       PFN_vkGetDeviceProcAddr get_device_proc_addr,
-                      bool timeline_semaphore = false);
+                      bool timeline_semaphore = false,
+                      bool bc_textures = false);
   void DestroyDevice(VkDevice device);
 
   void RegisterQueue(VkDevice device, VkQueue queue,
@@ -116,6 +165,10 @@ class VulkanEtc2Emulation final {
                            const VkImageViewCreateInfo* create_info,
                            const VkAllocationCallbacks* allocator,
                            VkImageView* view);
+  // Called after a successful vkAllocateMemory, so the CPU never maps memory
+  // the host cannot read.
+  void TrackAllocation(VkDevice device, const VkMemoryAllocateInfo* info,
+                       VkDeviceMemory memory);
   VkResult BindBufferMemory(VkDevice device, VkBuffer buffer,
                             VkDeviceMemory memory, VkDeviceSize offset);
   VkResult BindBufferMemory2(VkDevice device, std::uint32_t count,
@@ -164,7 +217,9 @@ class VulkanEtc2Emulation final {
   //
   // Returns `{VK_NULL_HANDLE, 0}` when there was nothing to decode, when
   // `allow_async` is false, or when the device has no timeline semaphore. In
-  // those cases every upload is already decoded when this returns.
+  // those cases every upload is already decoded when this returns. It also
+  // returns no semaphore when the uploads only keep ETC2 blocks for later
+  // copies, which the GPU never reads.
   Etc2SubmitWait PrepareSubmit(const VkCommandBuffer* command_buffers,
                                std::uint32_t count, bool allow_async = false,
                                VkQueue queue = VK_NULL_HANDLE);
@@ -175,6 +230,8 @@ class VulkanEtc2Emulation final {
   // Traced as the "emulated texture (MB)" and "compressed texture (MB)"
   // counters.
   EmulatedTextureBytes TextureBytes() const;
+  // The startup speed probe's result; zero when it did not run.
+  Etc2GpuSpeed GpuSpeed(VkDevice device) const;
 
   struct State;
 

@@ -198,20 +198,22 @@ struct Field {
   std::string_view literals;
 };
 
-constexpr std::array<Field, 3> kGraphicsFields{
+constexpr std::array<Field, 5> kGraphicsFields{
     Field{"graphics.vsync", "MOCKTAIL_VSYNC", FieldKind::kEnum, 0, 0,
           "auto on off"},
+    Field{"graphics.texture_compression", "MOCKTAIL_ETC2_BC_TRANSCODE",
+          FieldKind::kBooleanDigits},
+    Field{"graphics.small_texture_upscale", "MOCKTAIL_SMALL_TEXTURE_UPSCALE",
+          FieldKind::kEnum, 0, 0, "adaptive 1 2 4"},
     Field{"graphics.present_mode", "MOCKTAIL_PRESENT_MODE", FieldKind::kEnum, 0,
           0, "auto fifo mailbox immediate"},
     Field{"graphics.pipeline_cache", "MOCKTAIL_PIPELINE_CACHE_MODE",
           FieldKind::kEnum, 0, 0, "on off clear"},
 };
 
-constexpr std::array<Field, 5> kPerformanceFields{
+constexpr std::array<Field, 4> kPerformanceFields{
     Field{"performance.texture_memory_mb", "MOCKTAIL_TEXTURE_MEMORY_MB",
           FieldKind::kBoundedUnsigned, 0, 65536},
-    Field{"performance.small_texture_upscale", "MOCKTAIL_SMALL_TEXTURE_UPSCALE",
-          FieldKind::kBoundedUnsigned, 1, 8},
     Field{"audio.buffer_samples", "MOCKTAIL_AUDIO_BUFFER_SAMPLES",
           FieldKind::kBoundedUnsigned, 0, 8192},
     Field{"performance.multithreaded_rendering",
@@ -376,7 +378,11 @@ bool IsKnownKey(std::string_view key) {
          key == "overlay.ping" || key == "overlay.position" ||
          // The fork's own server location indicator, retired in favour of the
          // overlay and kept as a legacy alias so old configs still load.
-         key == "integrations.server_location_indicator";
+         key == "integrations.server_location_indicator" ||
+         // The fork used to expose the small-texture upscale factor here.
+         // Upstream owns the setting and files it under graphics, but a config
+         // written by an older build still has to load.
+         key == "performance.small_texture_upscale";
 }
 
 // "auto, on, or off" from "auto on off". Used for the two enum kinds so the
@@ -516,11 +522,6 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
     return found == yaml.end() ? std::nullopt
                                : std::optional<std::string>(found->second);
   };
-
-  // The accepted-key list is derived from the field tables and the explicitly
-  // handled keys, so a key cannot be accepted without being handled, or
-  // handled without being accepted. It used to be a separate hand-written set
-  // of ~55 literals that had to be kept in step by hand.
   for (const auto& [key, ignored] : yaml) {
     if (!IsKnownKey(key)) {
       *error = "unknown runtime configuration key: " + key;
@@ -710,6 +711,20 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
   }
   if (!ApplyFields(kPerformanceFields, yaml, environment, error)) {
     return false;
+  }
+  // The fork's old home for the small-texture upscale factor. It keeps its
+  // 1-8 range so an existing config behaves as it did, and defers to the
+  // graphics key when both are present.
+  if (const auto retired = value("performance.small_texture_upscale");
+      retired.has_value()) {
+    std::uint32_t parsed = 0;
+    if (!ParseBoundedUnsigned(*retired, 1, 8, &parsed)) {
+      *error = "performance.small_texture_upscale must be 1 to 8";
+      return false;
+    }
+    if (!value("graphics.small_texture_upscale").has_value()) {
+      (*environment)["MOCKTAIL_SMALL_TEXTURE_UPSCALE"] = *retired;
+    }
   }
   if (const auto physics_worker_mode = value("performance.physics_worker_mode");
       physics_worker_mode.has_value()) {
@@ -1223,6 +1238,10 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",
                           FrameRateValue(config.frame_rate()), error) &&
       SetEnvironmentValue("MOCKTAIL_VSYNC", config.vsync_mode(), error) &&
+      SetEnvironmentValue("MOCKTAIL_ETC2_BC_TRANSCODE",
+                          config.texture_compression() ? "1" : "0", error) &&
+      SetEnvironmentValue("MOCKTAIL_SMALL_TEXTURE_UPSCALE",
+                          config.small_texture_upscale(), error) &&
       SetEnvironmentValue("MOCKTAIL_PRESENT_MODE", config.present_mode(),
                           error) &&
       SetEnvironmentValue("MOCKTAIL_PIPELINE_CACHE_MODE",
@@ -1231,9 +1250,6 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
                           config.graphics_quality().value(), error) &&
       SetEnvironmentValue("MOCKTAIL_TEXTURE_MEMORY_MB",
                           std::to_string(config.texture_memory_mb()),
-                          error) &&
-      SetEnvironmentValue("MOCKTAIL_SMALL_TEXTURE_UPSCALE",
-                          std::to_string(config.small_texture_upscale()),
                           error) &&
       SetEnvironmentValue("MOCKTAIL_AUDIO_BUFFER_SAMPLES",
                           std::to_string(config.audio_buffer_samples()),

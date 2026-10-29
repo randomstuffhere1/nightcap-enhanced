@@ -71,6 +71,13 @@ graphics:
   # multithreaded path would otherwise force, and is the only way to get a
   # level other than that path's choice.
   # quality: auto
+  # Boolean (default: true): keep ETC2/EAC textures compressed as BC7/BC4/BC5
+  # on the GPU to use less video memory. Set false if textures look wrong.
+  # texture_compression: true
+  # String (default: adaptive): upscale for textures of 64px or less, as
+  # adaptive, 1, 2, or 4. adaptive picks up to 4 from the GPU's encode speed
+  # and steps down while the GPU is busy encoding.
+  # small_texture_upscale: adaptive
 
 performance:
   # Boolean (default: false): size Roblox scheduler/render queues from every
@@ -97,12 +104,6 @@ performance:
   # is printed at startup. 2047 is the practical maximum, because the client
   # reads the budget through a signed 32-bit setting.
   # texture_memory_mb: 0
-  # Integer (default: 4): redraw ETC2 textures of 64px or smaller at N times
-  # their size, so small mobile textures are not blurry on a desktop display.
-  # 1 turns it off. Higher values cost GPU memory and sampling bandwidth on
-  # every frame that uses an affected texture. Only affects experiences that
-  # upload compressed textures at all.
-  # small_texture_upscale: 4
 
 audio:
   # String (default: default): `default` follows the host system output.
