@@ -26,6 +26,7 @@ pkgbase = nightcap-git
 	depends = libglvnd
 	depends = libplacebo
 	depends = libpng
+	depends = libsecret
 	depends = libsoup3
 	depends = libutf8proc
 	depends = libyaml

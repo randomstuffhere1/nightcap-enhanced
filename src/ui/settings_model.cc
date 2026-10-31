@@ -1121,6 +1121,18 @@ const std::vector<SettingsPage>& SettingsPages() {
             "Custom device identity",
             "What the device reports about itself. Empty fields use the "
             "device preset's values."},
+           {"Sign-in",
+            {
+                {"auth.use_libsecret",
+                 "Keep the sign-in in the keyring",
+                 "Saves the Roblox sign-in with libsecret, such as GNOME "
+                 "Keyring or KWallet, instead of a private file. Applies the "
+                 "next time Nightcap starts. Turning it off signs you out.",
+                 SettingKind::kToggle,
+                 {},
+                 "false",
+                 {}},
+            }},
            {"Runtime",
             {
                 {"runtime.headless",
@@ -1226,6 +1238,44 @@ std::vector<DeviceChoice> DeviceChoices(const Setting& setting,
       {std::string(value),
        std::string(value) + (shared ? " (name not unique)" : " (not found)")});
   return choices;
+}
+
+FleasionState GetFleasionState(bool enabled, std::string_view mode,
+                               bool proxy_reachable) {
+  if (!enabled) return FleasionState::kOff;
+  if (mode == "hosts") return FleasionState::kNotChecked;
+  if (mode != "env") return FleasionState::kOff;
+  return proxy_reachable ? FleasionState::kRunning : FleasionState::kNotRunning;
+}
+
+std::string FleasionBadge(FleasionState state) {
+  switch (state) {
+    case FleasionState::kRunning:
+      return "Running";
+    case FleasionState::kNotRunning:
+      return "Not running";
+    case FleasionState::kNotChecked:
+      return "Not checked";
+    case FleasionState::kOff:
+      break;
+  }
+  return {};
+}
+
+std::string FleasionStatus(FleasionState state, int port) {
+  const std::string where = "on port " + std::to_string(port) + ".";
+  switch (state) {
+    case FleasionState::kRunning:
+      return "Fleasion's proxy is running " + where;
+    case FleasionState::kNotRunning:
+      return "Fleasion's proxy is not running " + where +
+             " Start Fleasion first.";
+    case FleasionState::kNotChecked:
+      return "Hosts routing can't be checked from here.";
+    case FleasionState::kOff:
+      break;
+  }
+  return {};
 }
 
 bool ToggleState(const Setting& setting, std::string_view value) {

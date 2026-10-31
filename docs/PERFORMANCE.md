@@ -312,8 +312,11 @@ constantly is a latency problem that no frame-time number will explain.
 
 `graphics.small_texture_upscale` in `config.yaml` sets this (Small texture
 upscale in the settings window); `MOCKTAIL_SMALL_TEXTURE_UPSCALE` does the same
-from the environment. It stores ETC2 textures of 64px or smaller at N times
-their width and height. 4 is 16 times the pixels per affected texture.
+from the environment. It gives ETC2 textures of 64px or smaller sharper levels
+above their own: one at 2, two at 4, upscaled from the texture's largest level.
+The texture's own levels keep their size and the texels Roblox sent, so the
+card picks them at normal draw size and the sharper ones only when the texture
+is drawn larger. 4 is 16 times the pixels per affected texture.
 
 The default, `adaptive`, sizes this to the graphics card. At startup Nightcap
 times the card's BC7 encoder on a few textures, minus the round trip of an

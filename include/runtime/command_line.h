@@ -10,6 +10,7 @@ namespace runtime {
 enum class CommandMode {
   kRun,
   kHelp,
+  kVersion,
   // Opens the settings window and exits, without starting Roblox. A separate
   // mode rather than a flag on kRun so nothing is downloaded, verified or
   // launched on the way to showing a window.

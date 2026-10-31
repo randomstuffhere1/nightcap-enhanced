@@ -272,6 +272,11 @@ constexpr std::array<Field, 7> kIntegrationBooleanFields{
           FieldKind::kBooleanDigits},
 };
 
+constexpr std::array<Field, 1> kAuthFields{
+    Field{"auth.use_libsecret", "MOCKTAIL_USE_LIBSECRET",
+          FieldKind::kBooleanDigits},
+};
+
 constexpr std::array<Field, 5> kDiscordRequiredStringFields{
     Field{"integrations.discord_rpc.join.button_label",
           "MOCKTAIL_DISCORD_RPC_JOIN_BUTTON_LABEL",
@@ -361,6 +366,7 @@ bool IsKnownKey(std::string_view key) {
          Contains(key, kWindowAndDeviceFields) || Contains(key, kInputFields) ||
          Contains(key, kFleasionPassthroughFields) ||
          Contains(key, kIntegrationBooleanFields) ||
+         Contains(key, kAuthFields) ||
          Contains(key, kDiscordRequiredStringFields) ||
          Contains(key, kDiscordOptionalStringFields) ||
          // Cross-checked as a pair, and the scheme/port rules are the parser's.
@@ -846,6 +852,9 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
     }
     (*environment)["MOCKTAIL_CA_BUNDLE"] = *ca_bundle;
   }
+  if (!ApplyFields(kAuthFields, yaml, environment, error)) {
+    return false;
+  }
   if (!ApplyFields(kIntegrationBooleanFields, yaml, environment, error)) {
     return false;
   }
@@ -978,7 +987,7 @@ bool LoadYaml(const std::filesystem::path& path, ValueMap* values, bool* loaded,
           *error = "device must be a preset scalar or detailed mapping";
           valid = false;
         }
-      } else if (key == "runtime" || key == "appearance" ||
+      } else if (key == "runtime" || key == "appearance" || key == "auth" ||
                  key == "graphics" || key == "performance" ||
                  key == "audio" || key == "window" || key == "input" ||
                  key == "compatibility" || key == "network" ||

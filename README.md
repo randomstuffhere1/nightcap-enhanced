@@ -312,7 +312,8 @@ inside Linuxulator; it is not a native FreeBSD binary. Building requires CMake
 Vulkan, EGL, libplacebo, fontconfig, libcurl, OpenSSL, libelf, libyaml, libpng,
 minizip, Capstone 5, utf8proc, nlohmann/json, GTK4, libadwaita 1.6+, and
 WebKitGTK 6.0. FFmpeg's libavcodec is optional: without it, in-game video
-stays black.
+stays black. libsecret is optional: without it, `auth.use_libsecret` has no
+effect and the sign-in stays in a private file.
 
 The texture kernels live in Rust (`rust/`, built by `cmake/MocktailRust.cmake`
 into a staticlib that links into the `libvulkan.so` stub and the kernel tests).
@@ -341,6 +342,7 @@ sudo apt install build-essential cmake git ninja-build pkg-config lld \
   libsdl3-dev libsdl3-ttf-dev libcurl4-openssl-dev libssl-dev \
   nlohmann-json3-dev libyaml-dev libpng-dev libelf-dev libminizip-dev \
   libcapstone-dev libgtk-4-dev libadwaita-1-dev libwebkitgtk-6.0-dev \
+  libsecret-1-dev \
   libutf8proc-dev libfontconfig1-dev libegl-dev libvulkan-dev \
   libplacebo-dev libavcodec-dev zlib1g-dev rustc cargo
 ```
@@ -352,7 +354,7 @@ sudo apt install build-essential cmake git ninja-build pkg-config lld \
 ```bash
 sudo pacman -S --needed base-devel cmake git ninja pkgconf lld sdl3 sdl3_ttf \
   curl openssl nlohmann-json libyaml libpng libelf minizip capstone gtk4 \
-  libadwaita webkitgtk-6.0 libutf8proc fontconfig libglvnd \
+  libadwaita libsecret webkitgtk-6.0 libutf8proc fontconfig libglvnd \
   libplacebo ffmpeg vulkan-headers vulkan-icd-loader zlib rust
 ```
 </details>
@@ -365,7 +367,7 @@ sudo dnf install gcc-c++ cmake git ninja-build pkgconf-pkg-config lld \
   SDL3-devel SDL3_ttf-devel libcurl-devel openssl-devel \
   nlohmann-json-devel libyaml-devel libpng-devel elfutils-libelf-devel \
   minizip-ng-compat-devel \
-  capstone-devel gtk4-devel libadwaita-devel webkitgtk6.0-devel \
+  capstone-devel gtk4-devel libadwaita-devel webkitgtk6.0-devel libsecret-devel \
   utf8proc-devel fontconfig-devel libglvnd-devel vulkan-headers \
   vulkan-loader-devel libplacebo-devel ffmpeg-free-devel zlib-ng-compat-devel rust cargo
 ```

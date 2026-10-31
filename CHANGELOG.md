@@ -22,6 +22,14 @@ Release notes on GitHub are taken from the matching section here.
   `use_new_text_renderer` (let the client draw its own text instead of the host text overlay). Every one is
   absent by default, so a payload nobody measured keeps today's behavior, and each can be overridden with
   `MOCKTAIL_SWAPCHAIN_FIXUP`, `MOCKTAIL_SHADER_FIXUPS` and `MOCKTAIL_NEW_TEXT_RENDERER`.
+- The Roblox sign-in can be kept in the desktop keyring through libsecret, such as GNOME Keyring or
+  KWallet, instead of a private file. Turn on "Keep the sign-in in the keyring" under Settings >
+  Advanced > Sign-in (`auth.use_libsecret`). It is off by default. Signing out from Roblox also clears
+  the keyring copy, and the hardware cursor reads its sign-in from the keyring too.
+- `mocktail --version` prints the build, and Settings > Advanced > About shows it with a copy button,
+  as the version, the revision since the last release and the commit, like `0.4.0 r54 (8bb1521)`.
+- The Fleasion page in Settings shows a badge for its proxy: Running, Not running, or Not checked for
+  hosts routing. It updates while the window is open, and hovering it shows the full message.
 - In-game video plays, such as livestream screens in events. It used to stay black because Android's
   video decoder was missing; Nightcap now decodes H.264, HEVC, VP8 and VP9 video and AAC audio with
   FFmpeg, which is a new dependency. Videos with a sound track no longer fail to load. The log shows
@@ -82,6 +90,10 @@ Release notes on GitHub are taken from the matching section here.
   instruction in the game's own code and puts it back, and a thread that calls the game's mouse-lock query
   in between sees the other mouse behaviour, which could jerk the camera during a drag. The probe now runs
   only while a right drag is starting.
+- The Settings window no longer shows a second Nightcap icon or missing page icons on KDE with the
+  Breeze icon theme.
+- Launching with Fleasion in env mode no longer fails at sign-in when nothing is listening on its proxy
+  port, for example when Fleasion runs in hosts mode. Nightcap now warns and starts without Fleasion.
 - The security check after Sign In no longer shows a black window on X11 desktops such as Cinnamon. Roblox
   web pages now use software rendering there too, as on Wayland.
 - Roblox web pages such as a game's server list no longer close right after opening on some NVIDIA
@@ -135,7 +147,8 @@ Release notes on GitHub are taken from the matching section here.
   or 1× when it can't measure. While textures load, it steps new ones down, or
   keeps them uncompressed, once encoding would take more than a tenth of the GPU's time, so slower
   cards no longer stutter with Compress textures on. The log shows the measured speed and what was
-  held back.
+  held back. Upscaling adds sharper levels above a texture's own and leaves Roblox's smaller levels
+  as they are, so textures Roblox streams in no longer turn blurry or lose detail at a distance.
 
 
 ## [0.4.0] - 2026-10-18

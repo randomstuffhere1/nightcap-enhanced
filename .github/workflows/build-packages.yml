@@ -156,7 +156,7 @@ jobs:
               pacman -Syu --noconfirm --needed \
                 cmake git ninja pkgconf lld sdl3 sdl3_ttf curl openssl \
                 nlohmann-json libyaml libelf minizip minizip-ng capstone gtk4 \
-                libadwaita webkitgtk-6.0 libutf8proc fontconfig libglvnd \
+                libadwaita libsecret webkitgtk-6.0 libutf8proc fontconfig libglvnd \
                 vulkan-headers zlib libplacebo ffmpeg bubblewrap xdg-dbus-proxy \
                 patchelf jq unzip file ca-certificates dbus zsync \
                 rust ccache mold
@@ -302,7 +302,7 @@ jobs:
                 libsdl3-dev libsdl3-ttf-dev libcurl4-openssl-dev libssl-dev \
                 nlohmann-json3-dev libyaml-dev libelf-dev libminizip-dev \
                 libcapstone-dev libgtk-4-dev libadwaita-1-dev \
-                libwebkitgtk-6.0-dev libutf8proc-dev libfontconfig1-dev \
+                libwebkitgtk-6.0-dev libsecret-1-dev libutf8proc-dev libfontconfig1-dev \
                 libegl-dev libvulkan-dev libplacebo-dev libavcodec-dev libpng-dev zlib1g-dev
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/third_party/Vulkan-Headers
@@ -391,7 +391,7 @@ jobs:
               pacman -Syu --needed --noconfirm \
                 cmake git ninja pkgconf lld sdl3 sdl3_ttf curl openssl \
                 nlohmann-json libyaml libelf minizip capstone gtk4 \
-                libadwaita webkitgtk-6.0 libutf8proc fontconfig libpng \
+                libadwaita libsecret webkitgtk-6.0 libutf8proc fontconfig libpng \
                 libplacebo ffmpeg vulkan-headers vulkan-icd-loader libglvnd zlib \
                 rust ccache mold
               useradd --create-home builder
@@ -464,7 +464,7 @@ jobs:
                 libsdl3-dev libsdl3-ttf-dev libcurl4-openssl-dev libssl-dev \
                 nlohmann-json3-dev libyaml-dev libelf-dev libminizip-dev \
                 libcapstone-dev libgtk-4-dev libadwaita-1-dev \
-                libwebkitgtk-6.0-dev libutf8proc-dev libfontconfig1-dev \
+                libwebkitgtk-6.0-dev libsecret-1-dev libutf8proc-dev libfontconfig1-dev \
                 libegl-dev libvulkan-dev libplacebo-dev libavcodec-dev libpng-dev zlib1g-dev
               git config --global --add safe.directory /workspace
               git config --global --add safe.directory /workspace/third_party/Vulkan-Headers
@@ -546,7 +546,7 @@ jobs:
                 SDL3-devel SDL3_ttf-devel libcurl-devel openssl-devel \
                 nlohmann-json-devel libyaml-devel elfutils-libelf-devel \
                 minizip-ng-compat-devel capstone-devel gtk4-devel libadwaita-devel \
-                webkitgtk6.0-devel utf8proc-devel fontconfig-devel \
+                webkitgtk6.0-devel libsecret-devel utf8proc-devel fontconfig-devel \
                 libglvnd-devel vulkan-headers vulkan-loader-devel \
                 libplacebo-devel ffmpeg-free-devel zlib-ng-compat-devel libpng-devel
               git config --global --add safe.directory /workspace
