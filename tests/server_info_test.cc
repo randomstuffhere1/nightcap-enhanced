@@ -67,7 +67,7 @@ TEST(ServerInfoTest, ReadsRobloxsOwnDataCenterForAServer) {
   EXPECT_EQ(region(R"({"regionCode":"IAD"})").value_or(""), "IAD");
   EXPECT_EQ(region(R"({"dataCenterRegion":"IAD"})").value_or(""), "IAD");
   EXPECT_FALSE(region(R"({"region":""})").has_value());
-  EXPECT_FALSE(region(R"({"place":"Asylum"}).has_value());
+  EXPECT_FALSE(region(R"({"place":"Asylum"})").has_value());
   EXPECT_FALSE(region("not json").has_value());
 }
 
