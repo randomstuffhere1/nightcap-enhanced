@@ -198,13 +198,11 @@ struct Field {
   std::string_view literals;
 };
 
-constexpr std::array<Field, 5> kGraphicsFields{
+constexpr std::array<Field, 4> kGraphicsFields{
     Field{"graphics.vsync", "MOCKTAIL_VSYNC", FieldKind::kEnum, 0, 0,
           "auto on off"},
     Field{"graphics.texture_compression", "MOCKTAIL_ETC2_BC_TRANSCODE",
           FieldKind::kBooleanDigits},
-    Field{"graphics.small_texture_upscale", "MOCKTAIL_SMALL_TEXTURE_UPSCALE",
-          FieldKind::kEnum, 0, 0, "adaptive 1 2 4"},
     Field{"graphics.present_mode", "MOCKTAIL_PRESENT_MODE", FieldKind::kEnum, 0,
           0, "auto fifo mailbox immediate"},
     Field{"graphics.pipeline_cache", "MOCKTAIL_PIPELINE_CACHE_MODE",
@@ -319,7 +317,7 @@ constexpr std::array<Field, 6> kDiscordOptionalStringFields{
 // Keys accepted but handled as explicit code in ValidateAndMap. Everything else
 // comes from the tables above, so the list of accepted keys cannot drift away
 // from the list of handled keys.
-constexpr std::array<std::string_view, 22> kHandledKeys{
+constexpr std::array<std::string_view, 23> kHandledKeys{
     "version",
     "device",
     "device.__mapping",
@@ -341,6 +339,7 @@ constexpr std::array<std::string_view, 22> kHandledKeys{
     "graphics.backend",
     "graphics.frame_rate_limit",
     "graphics.quality",
+    "graphics.small_texture_upscale",
     "performance.physics_worker_mode",
 };
 
@@ -714,6 +713,11 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
       return false;
     }
     (*environment)["MOCKTAIL_GRAPHICS_QUALITY"] = parsed.value();
+  }
+  // Anything else, such as the retired `auto` and `adaptive`, is the default.
+  if (const auto upscale = value("graphics.small_texture_upscale");
+      upscale == "1" || upscale == "2" || upscale == "4") {
+    (*environment)["MOCKTAIL_SMALL_TEXTURE_UPSCALE"] = *upscale;
   }
   if (!ApplyFields(kPerformanceFields, yaml, environment, error)) {
     return false;

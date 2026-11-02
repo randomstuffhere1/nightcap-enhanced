@@ -124,6 +124,15 @@ and resume, and the only large slice is the engine's own main-thread step at
 347 ms. Comparing that step's `cpu_us` against its duration showed it was
 blocked, not busy, which is what the item above now says.
 
+## 4. Retire small texture upscaling
+
+Remove it if texture reports stop with it off by default. It began so override
+PNGs could carry more detail, and no visual gain has been shown without
+overrides. Removing it takes out the upscale setting, the GPU upscale filter,
+and the extra mip levels above a texture's own with their view, barrier, blit
+and sampler LOD remapping. Overrides would then draw at the original texture's
+size.
+
 ## Shipped
 
 - Settings window, from the app menu or `mocktail --settings`: graphics,
@@ -146,8 +155,8 @@ blocked, not busy, which is what the item above now says.
 - Optional raw mouse input: `input.raw_mouse` in `config.yaml` sends look
   deltas in host units, so fractional display scaling no longer changes
   first-person sensitivity.
-- Small textures upscaled 4x by default, with PNG overrides in
-  `~/.config/mocktail/textures`.
+- PNG texture overrides in `~/.config/mocktail/textures`, with small texture
+  upscaling available but off by default.
 - ETC2 textures decoded on desktop GPUs without stutter.
 - The texture hot kernels in Rust: resampling, the EAC alpha merge and the R11
   and RG11 decoders, checked against the C++ they replaced by

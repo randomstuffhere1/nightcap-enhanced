@@ -196,7 +196,7 @@ class RuntimeConfig {
   const std::string& vsync_mode() const { return vsync_mode_; }
   // Keep ETC2/EAC textures compressed as BC7/BC4/BC5 on the GPU.
   bool texture_compression() const { return texture_compression_; }
-  // "adaptive", or a fixed factor for textures of 64px or less.
+  // "1", "2" or "4": the factor for textures of 64px or less.
   const std::string& small_texture_upscale() const {
     return small_texture_upscale_;
   }
@@ -279,7 +279,7 @@ class RuntimeConfig {
   FrameRatePolicy frame_rate_;
   std::string vsync_mode_ = "auto";
   bool texture_compression_ = true;
-  std::string small_texture_upscale_ = "adaptive";
+  std::string small_texture_upscale_ = "1";
   std::string present_mode_ = "auto";
   std::string pipeline_cache_mode_ = "on";
   GraphicsQualityConfig graphics_quality_;

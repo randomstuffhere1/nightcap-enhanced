@@ -1728,6 +1728,21 @@ graphics:
   EXPECT_EQ(loaded.config.small_texture_upscale(), "2");
 }
 
+// Includes the retired `adaptive` and `auto`, so an old config still loads.
+TEST(RuntimeConfigFileTest, ReadsUnknownUpscaleAsTheDefault) {
+  for (const char* saved : {"adaptive", "auto", "3", "8", "sharp"}) {
+    SCOPED_TRACE(saved);
+    TemporaryDirectory temporary;
+    const std::filesystem::path file = temporary.Write(
+        std::string("version: 1\ngraphics:\n  small_texture_upscale: ") +
+        saved + "\n");
+    const RuntimeConfigLoadResult loaded =
+        LoadRuntimeConfig(MapEnvironment(), file);
+    ASSERT_TRUE(loaded) << loaded.error;
+    EXPECT_EQ(loaded.config.small_texture_upscale(), "1");
+  }
+}
+
 TEST(RuntimeConfigFileTest, ExportsSmallTextureUpscale) {
   unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
   std::string error;
@@ -1735,7 +1750,7 @@ TEST(RuntimeConfigFileTest, ExportsSmallTextureUpscale) {
       RuntimeConfig::FromEnvironment(MapEnvironment()), &error))
       << error;
   ASSERT_NE(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), nullptr);
-  EXPECT_STREQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), "adaptive");
+  EXPECT_STREQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), "1");
 
   ASSERT_TRUE(ExportRuntimeConfigEnvironment(
       RuntimeConfig::FromEnvironment(
@@ -1793,23 +1808,6 @@ TEST(RuntimeConfigFileTest, RejectsOutOfRangeRetiredSmallTextureUpscale) {
 
     EXPECT_FALSE(loaded);
     EXPECT_NE(loaded.error.find("performance.small_texture_upscale"),
-              std::string::npos);
-  }
-}
-
-TEST(RuntimeConfigFileTest, RejectsUnsupportedSmallTextureUpscale) {
-  for (const char* value : {"3", "8", "fast"}) {
-    SCOPED_TRACE(value);
-    TemporaryDirectory temporary;
-    const std::filesystem::path file = temporary.Write(
-        std::string("version: 1\ngraphics:\n  small_texture_upscale: ") +
-        value + "\n");
-
-    const RuntimeConfigLoadResult loaded =
-        LoadRuntimeConfig(MapEnvironment(), file);
-
-    EXPECT_FALSE(loaded);
-    EXPECT_NE(loaded.error.find("graphics.small_texture_upscale"),
               std::string::npos);
   }
 }

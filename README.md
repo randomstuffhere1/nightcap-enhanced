@@ -32,10 +32,10 @@ side by side.
 - **Keeps up with Roblox.** New Roblox versions work soon after they come out.
 - **Lower input lag.** Frames are shown as soon as they are ready instead of
   waiting in a queue.
-- **Sharper textures.** Small textures are upscaled 4x by default, and you
-  can replace any texture with your own PNG in `~/.config/mocktail/textures`.
-  A ready-made crosshair is in [`textures/`](textures/README.md). Set
-  `MOCKTAIL_SMALL_TEXTURE_UPSCALE=1` to turn the upscale off.
+- **Sharper textures.** You can replace any texture with your own PNG in
+  `~/.config/mocktail/textures`, and small textures can be given sharper
+  levels above their own with `MOCKTAIL_SMALL_TEXTURE_UPSCALE=2` or `4`.
+  A ready-made crosshair is in [`textures/`](textures/README.md).
 - **ETC2 textures on any GPU.** Games that use compressed mobile textures now
   render correctly on desktop GPUs, without stutter.
 - **A pipeline cache that is already warm.** The client keeps its own
@@ -273,9 +273,9 @@ You can also edit the file by hand. Useful options:
   to leave it to the client.
 - `performance.texture_memory_mb` to raise or lower the texture budget Roblox
   is told about. 0 keeps the automatic figure.
-- `graphics.small_texture_upscale` to change how much small compressed
-  textures are enlarged: `adaptive` (the default), `1`, `2` or `4`. `1` turns
-  it off.
+- `graphics.small_texture_upscale` to give small compressed textures sharper
+  levels above their own: `1` (the default, off), `2`, or `4`. A value the
+  loader does not know, such as the retired `adaptive`, reads as `1`.
 - `performance.multithreaded_rendering: true` to size Roblox's worker queues
   from every physical core.
 - `graphics.pipeline_cache: clear` to drop the fallback pipeline cache and run
