@@ -1713,25 +1713,12 @@ TEST(RuntimeConfigFileTest, ExportsTextureCompressionPolicy) {
   unsetenv("MOCKTAIL_ETC2_BC_TRANSCODE");
 }
 
-TEST(RuntimeConfigFileTest, LoadsSmallTextureUpscaleFromFile) {
-  TemporaryDirectory temporary;
-  const std::filesystem::path file = temporary.Write(R"yaml(
-version: 1
-graphics:
-  small_texture_upscale: 2
-)yaml");
-
-  const RuntimeConfigLoadResult loaded =
-      LoadRuntimeConfig(MapEnvironment(), file);
-
-  ASSERT_TRUE(loaded) << loaded.error;
-  EXPECT_EQ(loaded.config.small_texture_upscale(), "2");
-}
-
-// Includes the retired `adaptive` and `auto`, so an old config still loads.
-TEST(RuntimeConfigFileTest, ReadsUnknownUpscaleAsTheDefault) {
-  for (const char* saved : {"adaptive", "auto", "3", "8", "sharp"}) {
+// The setting is retired: an old config still loads, and the upscale stays
+// at the engine's default.
+TEST(RuntimeConfigFileTest, IgnoresTheRetiredSmallTextureUpscale) {
+  for (const char* saved : {"1", "2", "4", "adaptive", "auto"}) {
     SCOPED_TRACE(saved);
+    unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
     TemporaryDirectory temporary;
     const std::filesystem::path file = temporary.Write(
         std::string("version: 1\ngraphics:\n  small_texture_upscale: ") +
@@ -1739,76 +1726,31 @@ TEST(RuntimeConfigFileTest, ReadsUnknownUpscaleAsTheDefault) {
     const RuntimeConfigLoadResult loaded =
         LoadRuntimeConfig(MapEnvironment(), file);
     ASSERT_TRUE(loaded) << loaded.error;
-    EXPECT_EQ(loaded.config.small_texture_upscale(), "1");
+    std::string error;
+    ASSERT_TRUE(ExportRuntimeConfigEnvironment(loaded.config, &error))
+        << error;
+    EXPECT_EQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), nullptr);
   }
 }
 
-TEST(RuntimeConfigFileTest, ExportsSmallTextureUpscale) {
-  unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
-  std::string error;
-  ASSERT_TRUE(ExportRuntimeConfigEnvironment(
-      RuntimeConfig::FromEnvironment(MapEnvironment()), &error))
-      << error;
-  ASSERT_NE(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), nullptr);
-  EXPECT_STREQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), "1");
-
-  ASSERT_TRUE(ExportRuntimeConfigEnvironment(
-      RuntimeConfig::FromEnvironment(
-          MapEnvironment({{"MOCKTAIL_SMALL_TEXTURE_UPSCALE", "4"}})),
-      &error))
-      << error;
-  EXPECT_STREQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), "4");
-  unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
-}
-
-TEST(RuntimeConfigFileTest, RetiredPerformanceSmallTextureUpscaleStillLoads) {
-  // The fork used to file this under performance, with a 1-8 range. A config
-  // written by an older build has to keep loading and keep its meaning.
-  TemporaryDirectory temporary;
-  const std::filesystem::path file = temporary.Write(R"yaml(
-version: 1
-performance:
-  small_texture_upscale: 3
-)yaml");
-
-  const RuntimeConfigLoadResult loaded =
-      LoadRuntimeConfig(MapEnvironment(), file);
-
-  ASSERT_TRUE(loaded) << loaded.error;
-  EXPECT_EQ(loaded.config.small_texture_upscale(), "3");
-}
-
-TEST(RuntimeConfigFileTest, GraphicsSmallTextureUpscaleWinsOverTheRetiredKey) {
-  TemporaryDirectory temporary;
-  const std::filesystem::path file = temporary.Write(R"yaml(
-version: 1
-graphics:
-  small_texture_upscale: 2
-performance:
-  small_texture_upscale: 8
-)yaml");
-
-  const RuntimeConfigLoadResult loaded =
-      LoadRuntimeConfig(MapEnvironment(), file);
-
-  ASSERT_TRUE(loaded) << loaded.error;
-  EXPECT_EQ(loaded.config.small_texture_upscale(), "2");
-}
-
-TEST(RuntimeConfigFileTest, RejectsOutOfRangeRetiredSmallTextureUpscale) {
-  for (const char* value : {"0", "9", "4x"}) {
-    SCOPED_TRACE(value);
+TEST(RuntimeConfigFileTest, IgnoresTheRetiredPerformanceSmallTextureUpscale) {
+  // The fork used to file this under performance, with a 1-8 range. The
+  // setting was retired upstream, so old configs load and the value is
+  // ignored.
+  for (const char* saved : {"1", "2", "4", "adaptive", "auto", "0", "9"}) {
+    SCOPED_TRACE(saved);
+    unsetenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE");
     TemporaryDirectory temporary;
     const std::filesystem::path file = temporary.Write(
         std::string("version: 1\nperformance:\n  small_texture_upscale: ") +
-        value + "\n");
-
+        saved + "\n");
     const RuntimeConfigLoadResult loaded =
         LoadRuntimeConfig(MapEnvironment(), file);
-
-    EXPECT_FALSE(loaded);
-    EXPECT_NE(loaded.error.find("performance.small_texture_upscale"),
-              std::string::npos);
+    ASSERT_TRUE(loaded) << loaded.error;
+    std::string error;
+    ASSERT_TRUE(ExportRuntimeConfigEnvironment(loaded.config, &error))
+        << error;
+    EXPECT_EQ(getenv("MOCKTAIL_SMALL_TEXTURE_UPSCALE"), nullptr);
   }
 }
 

@@ -531,64 +531,52 @@ const std::vector<SettingsPage>& SettingsPages() {
                   "You gain:\n"
                   "• May fix broken or black textures\n\n"
                   "Requires a restart to take effect."),
-                {"graphics.small_texture_upscale",
-                 "Small texture upscale",
-                 "Sharpens textures of 64px or less. Off by default. "
-                 "Requires a restart.",
-                 SettingKind::kChoice,
-                 {
-                     {"1", "1× (off)"},
-                     {"2", "2×"},
-                     {"4", "4×"},
-                 },
-                 "1",
-                 {{"auto", "1"}, {"adaptive", "1"}}},
-                {"graphics.present_mode",
-                 "Present mode",
-                 "How frames reach the display. Automatic follows the VSync "
-                 "setting; anything else here overrides it.",
-                 SettingKind::kChoice,
-                 {
-                     {"auto", "Automatic"},
-                     {"fifo", "FIFO (VSync)"},
-                     {"mailbox", "Mailbox (no tearing)"},
-                     {"immediate", "Immediate (no VSync)"},
-                 },
-                 "auto",
-                 {}},
-                {"graphics.quality",
-                 "Graphics quality",
-                 "Roblox's own graphics level. Higher asks for more shadow and "
-                 "lighting work, so it lowers the frame rate rather than "
-                 "sharpening the image.",
-                 SettingKind::kChoice,
-                 {
-                     {"auto", "Automatic"},
-                     {"1", "Level 1"},
-                     {"2", "Level 2"},
-                     {"3", "Level 3"},
-                     {"4", "Level 4"},
-                     {"5", "Level 5"},
-                     {"6", "Level 6"},
-                 },
-                 "auto",
-                 {
-                     {"manual", "auto"},
-                     {"0", "auto"},
-                 }},
-                {"graphics.pipeline_cache",
-                 "Pipeline cache",
-                 "A fallback copy of the driver's pipeline cache. The client "
-                 "keeps its own, so this does nothing on a stock client. Clear "
-                 "discards it and runs the next session uncached.",
-                 SettingKind::kChoice,
-                 {
-                     {"on", "On"},
-                     {"off", "Off"},
-                     {"clear", "Clear once"},
-                 },
-                 "on",
-                 {}},
+                 {"graphics.present_mode",
+                  "Present mode",
+                  "How frames reach the display. Automatic follows the VSync "
+                  "setting; anything else here overrides it.",
+                  SettingKind::kChoice,
+                  {
+                      {"auto", "Automatic"},
+                      {"fifo", "FIFO (VSync)"},
+                      {"mailbox", "Mailbox (no tearing)"},
+                      {"immediate", "Immediate (no VSync)"},
+                  },
+                  "auto",
+                  {}},
+                 {"graphics.quality",
+                  "Graphics quality",
+                  "Roblox's own graphics level. Higher asks for more shadow and "
+                  "lighting work, so it lowers the frame rate rather than "
+                  "sharpening the image.",
+                  SettingKind::kChoice,
+                  {
+                      {"auto", "Automatic"},
+                      {"1", "Level 1"},
+                      {"2", "Level 2"},
+                      {"3", "Level 3"},
+                      {"4", "Level 4"},
+                      {"5", "Level 5"},
+                      {"6", "Level 6"},
+                  },
+                  "auto",
+                  {
+                      {"manual", "auto"},
+                      {"0", "auto"},
+                  }},
+                 {"graphics.pipeline_cache",
+                  "Pipeline cache",
+                  "A fallback copy of the driver's pipeline cache. The client "
+                  "keeps its own, so this does nothing on a stock client. Clear "
+                  "discards it and runs the next session uncached.",
+                  SettingKind::kChoice,
+                  {
+                      {"on", "On"},
+                      {"off", "Off"},
+                      {"clear", "Clear once"},
+                  },
+                  "on",
+                  {}},
             }},
            {"Display",
             {

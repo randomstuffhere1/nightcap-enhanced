@@ -273,10 +273,6 @@ bool WindowPointerCaptureOwner::NeedsRightButtonReleaseRecovery(
   return false;
 }
 
-bool WindowPointerCaptureOwner::ShouldDispatchMouseMotion() {
-  return true;
-}
-
 bool WindowPointerCaptureOwner::OnFocusGained(bool text_input_active) {
   focused_ = true;
   return Pump(text_input_active);
@@ -290,7 +286,6 @@ bool WindowPointerCaptureOwner::OnFocusLost() {
   native_lock_was_active_before_right_drag_ = false;
   shift_key_pressed_during_right_drag_ = false;
   wait_for_native_unlock_after_right_drag_ = false;
-  discard_next_motion_after_right_drag_ = false;
   return Apply(false, CursorShape::kArrow);
 }
 
@@ -303,7 +298,6 @@ bool WindowPointerCaptureOwner::Shutdown() {
   native_lock_was_active_before_right_drag_ = false;
   shift_key_pressed_during_right_drag_ = false;
   wait_for_native_unlock_after_right_drag_ = false;
-  discard_next_motion_after_right_drag_ = false;
   return Apply(false, CursorShape::kArrow);
 }
 
@@ -322,11 +316,17 @@ bool WindowPointerCaptureOwner::Apply(bool capture, CursorShape cursor,
     cursor_image_.reset();
     return !capture && cursor == CursorShape::kArrow;
   }
+  // Read before the backend warps, so the warp's event is not older.
+  const std::uint64_t applied_ms = NowMs();
   if (backend_->Apply(capture, cursor, image, center_pointer)) {
     const bool capture_changed = capture != captured_;
     const bool visibility_changed =
         (cursor == CursorShape::kHidden) != (cursor_ == CursorShape::kHidden);
     captured_ = capture;
+    if (capture_changed) {
+      capture_release_motion_pending_ = !capture;
+      capture_release_ms_ = applied_ms;
+    }
     cursor_ = cursor;
     cursor_image_ = std::move(image);
     if (center_pointer && !pointer_centered_) {
@@ -346,6 +346,10 @@ bool WindowPointerCaptureOwner::Apply(bool capture, CursorShape cursor,
     return true;
   }
   backend_->Apply(false, CursorShape::kArrow, nullptr, false);
+  if (captured_) {
+    capture_release_motion_pending_ = true;
+    capture_release_ms_ = applied_ms;
+  }
   captured_ = false;
   cursor_ = CursorShape::kArrow;
   cursor_image_.reset();

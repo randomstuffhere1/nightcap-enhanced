@@ -314,9 +314,9 @@ constexpr std::array<Field, 6> kDiscordOptionalStringFields{
           FieldKind::kBoundedOptionalString, 0, 128},
 };
 
-// Keys accepted but handled as explicit code in ValidateAndMap. Everything else
-// comes from the tables above, so the list of accepted keys cannot drift away
-// from the list of handled keys.
+// Keys accepted explicitly in ValidateAndMap, including retired keys kept so old
+// configs still load. Everything else comes from the tables above, so the list of
+// accepted keys cannot drift away from the list of handled keys.
 constexpr std::array<std::string_view, 23> kHandledKeys{
     "version",
     "device",
@@ -714,28 +714,12 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
     }
     (*environment)["MOCKTAIL_GRAPHICS_QUALITY"] = parsed.value();
   }
-  // Anything else, such as the retired `auto` and `adaptive`, is the default.
-  if (const auto upscale = value("graphics.small_texture_upscale");
-      upscale == "1" || upscale == "2" || upscale == "4") {
-    (*environment)["MOCKTAIL_SMALL_TEXTURE_UPSCALE"] = *upscale;
-  }
   if (!ApplyFields(kPerformanceFields, yaml, environment, error)) {
     return false;
   }
-  // The fork's old home for the small-texture upscale factor. It keeps its
-  // 1-8 range so an existing config behaves as it did, and defers to the
-  // graphics key when both are present.
-  if (const auto retired = value("performance.small_texture_upscale");
-      retired.has_value()) {
-    std::uint32_t parsed = 0;
-    if (!ParseBoundedUnsigned(*retired, 1, 8, &parsed)) {
-      *error = "performance.small_texture_upscale must be 1 to 8";
-      return false;
-    }
-    if (!value("graphics.small_texture_upscale").has_value()) {
-      (*environment)["MOCKTAIL_SMALL_TEXTURE_UPSCALE"] = *retired;
-    }
-  }
+  // `graphics.small_texture_upscale` is retired: old configs load and the
+  // value is ignored. The fork's `performance.small_texture_upscale` alias
+  // is retired the same way.
   if (const auto physics_worker_mode = value("performance.physics_worker_mode");
       physics_worker_mode.has_value()) {
     PhysicsWorkerMode parsed = PhysicsWorkerMode::kAuto;
@@ -1253,8 +1237,6 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_VSYNC", config.vsync_mode(), error) &&
       SetEnvironmentValue("MOCKTAIL_ETC2_BC_TRANSCODE",
                           config.texture_compression() ? "1" : "0", error) &&
-      SetEnvironmentValue("MOCKTAIL_SMALL_TEXTURE_UPSCALE",
-                          config.small_texture_upscale(), error) &&
       SetEnvironmentValue("MOCKTAIL_PRESENT_MODE", config.present_mode(),
                           error) &&
       SetEnvironmentValue("MOCKTAIL_PIPELINE_CACHE_MODE",

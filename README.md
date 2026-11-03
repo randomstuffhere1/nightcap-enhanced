@@ -273,9 +273,6 @@ You can also edit the file by hand. Useful options:
   to leave it to the client.
 - `performance.texture_memory_mb` to raise or lower the texture budget Roblox
   is told about. 0 keeps the automatic figure.
-- `graphics.small_texture_upscale` to give small compressed textures sharper
-  levels above their own: `1` (the default, off), `2`, or `4`. A value the
-  loader does not know, such as the retired `adaptive`, reads as `1`.
 - `performance.multithreaded_rendering: true` to size Roblox's worker queues
   from every physical core.
 - `graphics.pipeline_cache: clear` to drop the fallback pipeline cache and run
