@@ -140,6 +140,9 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Changed
 
+- Nightcap comments out the retired `graphics.small_texture_upscale` and
+  `performance.small_texture_upscale` settings in `config.yaml` when it launches,
+  logging a warning for each one it removes. The old lines stay as comments.
 - Roblox updates now download in the background while Nightcap runs and install on the next launch.
   An interrupted download resumes where it stopped. It runs at low CPU and disk priority, and stops
   if Nightcap closes or crashes.

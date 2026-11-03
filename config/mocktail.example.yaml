@@ -1,6 +1,7 @@
 # Modified by vii from komaruworld/mocktail. See README "About this fork".
 # Mocktail configuration.
-# The file is created once with mode 0600. Mocktail never replaces your edits.
+# The file is created once with mode 0600. Mocktail does not rewrite your
+# edits, except that retired settings are commented out when it launches.
 
 # Integer: configuration schema version. Only version 1 is supported.
 version: 1

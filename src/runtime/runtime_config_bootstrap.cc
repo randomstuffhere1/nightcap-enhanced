@@ -6,11 +6,15 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+#include "runtime/runtime_config_editor.h"
+#include "runtime/runtime_config_store.h"
 
 namespace mocktail {
 namespace runtime {
@@ -19,7 +23,8 @@ namespace {
 constexpr std::string_view kDefaultRuntimeConfig =
     R"yaml(# Modified by vii from komaruworld/mocktail. See README "About this fork".
 # Mocktail configuration.
-# The file is created once with mode 0600. Mocktail never replaces your edits.
+# The file is created once with mode 0600. Mocktail does not rewrite your
+# edits, except that retired settings are commented out when it launches.
 
 # Integer: configuration schema version. Only version 1 is supported.
 version: 1
@@ -317,6 +322,68 @@ bool WriteAll(int file, std::string_view contents, std::string* error) {
   return true;
 }
 
+constexpr std::string_view kRetiredRuntimeConfigKeys[] = {
+    "graphics.small_texture_upscale",
+    "performance.small_texture_upscale",
+};
+
+void ScrubRetiredRuntimeConfigKeys(const std::filesystem::path& config_file) {
+  constexpr std::size_t kMaximumRuntimeConfigBytes = 1024U * 1024U;
+  const RuntimeConfigText read =
+      ReadOptionalTextFile(config_file, kMaximumRuntimeConfigBytes);
+  if (!read) {
+    std::fprintf(stderr,
+                 "[config] warning: could not read %s to remove retired "
+                 "settings: %s\n",
+                 config_file.string().c_str(), read.error.c_str());
+    return;
+  }
+  if (read.text.size() > kMaximumRuntimeConfigBytes) {
+    std::fprintf(stderr,
+                 "[config] warning: not removing retired settings from %s: "
+                 "the file is too large\n",
+                 config_file.string().c_str());
+    return;
+  }
+
+  std::string scrubbed = read.text;
+  std::vector<std::string_view> removed;
+  for (const std::string_view key : kRetiredRuntimeConfigKeys) {
+    const RuntimeConfigEdit edit = UnsetRuntimeConfigValue(scrubbed, key);
+    if (!edit) {
+      std::fprintf(stderr,
+                   "[config] warning: could not remove retired setting %.*s "
+                   "from %s: %s\n",
+                   static_cast<int>(key.size()), key.data(),
+                   config_file.string().c_str(), edit.error.c_str());
+      return;
+    }
+    if (edit.text != scrubbed) {
+      removed.push_back(key);
+      scrubbed = edit.text;
+    }
+  }
+  if (removed.empty()) {
+    return;
+  }
+
+  const RuntimeConfigSaveResult saved =
+      SaveRuntimeConfigText(config_file, read.text, scrubbed);
+  if (!saved) {
+    std::fprintf(stderr,
+                 "[config] warning: could not remove retired settings from "
+                 "%s: %s\n",
+                 config_file.string().c_str(), saved.error.c_str());
+    return;
+  }
+  for (const std::string_view key : removed) {
+    std::fprintf(stderr,
+                 "[config] warning: removed retired setting %.*s from %s\n",
+                 static_cast<int>(key.size()), key.data(),
+                 config_file.string().c_str());
+  }
+}
+
 bool InspectExistingConfig(const std::filesystem::path& config_file,
                            bool* exists, std::string* error) {
   struct stat metadata = {};
@@ -355,6 +422,7 @@ RuntimeConfigBootstrapResult EnsureRuntimeConfigFile(
     return result;
   }
   if (exists) {
+    ScrubRetiredRuntimeConfigKeys(config_file);
     return result;
   }
 

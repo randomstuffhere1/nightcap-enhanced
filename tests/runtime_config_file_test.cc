@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "runtime/runtime_config_bootstrap.h"
+#include "runtime/runtime_config_editor.h"
 
 #ifndef MOCKTAIL_TEST_SOURCE_DIR
 #error "MOCKTAIL_TEST_SOURCE_DIR must point at the Mocktail source tree"
@@ -218,6 +219,51 @@ TEST(RuntimeConfigBootstrapTest, PreservesExistingRegularFile) {
   ASSERT_TRUE(bootstrapped) << bootstrapped.error;
   EXPECT_FALSE(bootstrapped.created());
   EXPECT_EQ(ReadFile(regular), "user: settings\n");
+}
+
+TEST(RuntimeConfigBootstrapTest, RemovesRetiredSmallTextureUpscaleKeys) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(
+      "version: 1\n"
+      "graphics:\n"
+      "  texture_compression: false\n"
+      "  small_texture_upscale: 2\n"
+      "performance:\n"
+      "  physics_worker_mode: latency\n"
+      "  small_texture_upscale: 8\n");
+
+  const RuntimeConfigBootstrapResult bootstrapped = EnsureRuntimeConfigFile(file);
+
+  ASSERT_TRUE(bootstrapped) << bootstrapped.error;
+  const std::string text = ReadFile(file);
+  EXPECT_FALSE(GetRuntimeConfigValue(text, "graphics.small_texture_upscale").found);
+  EXPECT_FALSE(
+      GetRuntimeConfigValue(text, "performance.small_texture_upscale").found);
+  EXPECT_EQ(GetRuntimeConfigValue(text, "graphics.texture_compression").value,
+            "false");
+  EXPECT_EQ(GetRuntimeConfigValue(text, "performance.physics_worker_mode").value,
+            "latency");
+  const RuntimeConfigLoadResult loaded = LoadRuntimeConfig(MapEnvironment(), file);
+  ASSERT_TRUE(loaded) << loaded.error;
+}
+
+TEST(RuntimeConfigBootstrapTest, CommentsOutRetiredSectionWithNoOtherKeys) {
+  TemporaryDirectory temporary;
+  const std::filesystem::path file = temporary.Write(
+      "version: 1\n"
+      "graphics:\n"
+      "  small_texture_upscale: 4\n"
+      "window:\n"
+      "  width: 1600\n");
+
+  const RuntimeConfigBootstrapResult bootstrapped = EnsureRuntimeConfigFile(file);
+
+  ASSERT_TRUE(bootstrapped) << bootstrapped.error;
+  const std::string text = ReadFile(file);
+  EXPECT_FALSE(GetRuntimeConfigValue(text, "graphics.small_texture_upscale").found);
+  EXPECT_EQ(GetRuntimeConfigValue(text, "window.width").value, "1600");
+  const RuntimeConfigLoadResult loaded = LoadRuntimeConfig(MapEnvironment(), file);
+  ASSERT_TRUE(loaded) << loaded.error;
 }
 
 TEST(RuntimeConfigBootstrapTest, RejectsSymlinkAndNonRegularEntry) {
