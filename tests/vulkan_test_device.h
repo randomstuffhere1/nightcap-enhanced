@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -68,6 +69,11 @@ inline VkInstance CreateTestInstance(PFN_vkGetInstanceProcAddr* get) {
   return instance;
 }
 
+inline bool SoftwareVulkanAllowed() {
+  const char* allow = std::getenv("MOCKTAIL_TEST_SOFTWARE_VULKAN");
+  return allow != nullptr && std::string(allow) != "0" && allow[0] != '\0';
+}
+
 inline std::vector<VulkanTestDevice> OpenTestDevices() {
   std::vector<VulkanTestDevice> devices;
   VulkanTestDevice base;
@@ -88,6 +94,10 @@ inline std::vector<VulkanTestDevice> OpenTestDevices() {
     vk.Instance<PFN_vkGetPhysicalDeviceProperties>(
         "vkGetPhysicalDeviceProperties")(candidate, &properties);
     vk.name = properties.deviceName;
+    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU &&
+        !SoftwareVulkanAllowed()) {
+      continue;
+    }
     vk.Instance<PFN_vkGetPhysicalDeviceMemoryProperties>(
         "vkGetPhysicalDeviceMemoryProperties")(candidate, &vk.memory);
     auto queue_properties =
