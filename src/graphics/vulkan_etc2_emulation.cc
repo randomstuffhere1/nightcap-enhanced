@@ -227,7 +227,10 @@ void Etc2EncodeBudget::Refill(std::uint64_t now_ns) {
 
 void Etc2EncodeBudget::Charge(double cost_ns, std::uint64_t now_ns) {
   Refill(now_ns);
-  available_ns_ -= cost_ns;
+  // Charges stop at four bursts of debt, so a long run of fast encodes ends
+  // within 0.64 s of wall time. A deeper debt from one large Take is kept.
+  const double floor = std::min(available_ns_, -4 * burst_ns_);
+  available_ns_ = std::max(available_ns_ - cost_ns, floor);
 }
 
 void Etc2EncodeBudget::Refund(double cost_ns) {
@@ -289,7 +292,8 @@ unsigned DecodeWorkerCount() {
 // Images whose encode the budget decided since `since_ns`, by host scale.
 struct EncodeStats {
   std::uint64_t by_scale[9] = {};
-  std::uint64_t held_back = 0;
+  // Encoded fast because the budget was dry.
+  std::uint64_t fast = 0;
   double estimated_ns = 0;
   std::uint64_t since_ns = 0;
 };
@@ -309,7 +313,8 @@ std::uint64_t VideoMemoryOverrideMib(const char* value) {
 }
 
 // A line every kEncodeLogIntervalNs while images are created, so a session
-// log shows what the budget held back on the reporter's GPU.
+// log shows how often the budget fell back to fast encodes on the
+// reporter's GPU.
 std::string TakeEncodeLog(EncodeStats* stats, std::uint64_t now) {
   if (stats->since_ns == 0) {
     stats->since_ns = now;
@@ -329,8 +334,9 @@ std::string TakeEncodeLog(EncodeStats* stats, std::uint64_t now) {
       line += part;
     }
   }
-  std::snprintf(part, sizeof(part), " kept decoded %llu; est %.1f ms GPU\n",
-                static_cast<unsigned long long>(stats->held_back),
+  std::snprintf(part, sizeof(part),
+                " fast %llu; est %.1f ms GPU\n",
+                static_cast<unsigned long long>(stats->fast),
                 stats->estimated_ns / 1e6);
   line += part;
   *stats = {};
@@ -445,6 +451,7 @@ struct ImageRecord {
   bool transcoded = false;
   // Encode budget taken at creation and not yet spent by an upload.
   double prepaid_ns = 0;
+  bool fast_encode = false;
   // An override file names this image's size, so its uploads decode on the
   // CPU where they can be hashed and replaced.
   bool may_override = false;
@@ -1921,11 +1928,11 @@ struct VulkanEtc2Emulation::State {
     return pick;
   }
 
-  // Prepays an image's first full upload at `scale`, probe-measured ns per
-  // block times the host chain's blocks. Returns the prepaid ns; zero leaves
-  // the image decoded.
+  // Prepays an image's first full upload at probe-measured ns per block.
+  // A dry budget never leaves an image decoded: it goes into debt for the
+  // fast encode instead, about half the cost.
   double BudgetEncode(const HostDevice& dev, const VkImageCreateInfo& info,
-                      std::uint32_t scale) {
+                      std::uint32_t scale, bool* fast) {
     std::string line;
     double prepaid = 0;
     {
@@ -1942,11 +1949,15 @@ struct VulkanEtc2Emulation::State {
           own;
       const double cost =
           own * dev.speed.transcode_ns + top * dev.speed.upscale_ns;
+      ++dev.stats.by_scale[std::min<std::uint32_t>(scale, 8)];
       if (dev.budget.Take(cost, now)) {
-        ++dev.stats.by_scale[std::min<std::uint32_t>(scale, 8)];
         prepaid = cost;
       } else {
-        ++dev.stats.held_back;
+        // Upscales encode texels, which the fast path barely speeds up.
+        prepaid = own * dev.speed.fast_transcode_ns + top * dev.speed.upscale_ns;
+        dev.budget.Charge(prepaid, now);
+        ++dev.stats.fast;
+        *fast = true;
       }
       line = TakeEncodeLog(&dev.stats, now);
     }
@@ -1997,12 +2008,15 @@ struct VulkanEtc2Emulation::State {
   }
 
   void RefundEncode(const HostDevice& dev, double prepaid,
-                    std::uint32_t scale) {
+                    std::uint32_t scale, bool fast) {
     if (prepaid > 0) {
       std::lock_guard<std::mutex> lock(mutex);
       dev.budget.Refund(prepaid);
       std::uint64_t& counted = dev.stats.by_scale[std::min<std::uint32_t>(scale, 8)];
       counted -= counted > 0 ? 1 : 0;
+      if (fast) {
+        dev.stats.fast -= dev.stats.fast > 0 ? 1 : 0;
+      }
     }
   }
 
@@ -2780,18 +2794,6 @@ struct VulkanEtc2Emulation::State {
                     VkImage image, std::vector<GpuUpload> gpus,
                     const std::vector<Region>& rewritten,
                     std::vector<GpuCopy<Region>>* copies) {
-    double encode_ns = 0;
-    const auto blocks = [](const Etc2GpuJob& job) {
-      return static_cast<double>(job.blocks_wide) * job.blocks_high *
-             job.layers;
-    };
-    for (const GpuUpload& gpu : gpus) {
-      if (encode_budget && gpu.encode) {
-        encode_ns += blocks(gpu.encoding) * dev.speed.upscale_ns;
-      } else if (encode_budget && gpu.job.transcode) {
-        encode_ns += blocks(gpu.job) * dev.speed.transcode_ns;
-      }
-    }
     const auto align = [](VkDeviceSize bytes) {
       return (bytes + kStagingAlignment - 1) / kStagingAlignment *
              kStagingAlignment;
@@ -2864,10 +2866,29 @@ struct VulkanEtc2Emulation::State {
       }
     }
     std::lock_guard<std::mutex> lock(mutex);
+    const auto record = images.find(image);
+    // Upscales are charged and encoded in full; only transcodes go fast.
+    const bool fast = record != images.end() && record->second.fast_encode;
+    double encode_ns = 0;
+    const auto blocks = [](const Etc2GpuJob& job) {
+      return static_cast<double>(job.blocks_wide) * job.blocks_high *
+             job.layers;
+    };
+    for (std::vector<GpuUpload>& group : groups) {
+      for (GpuUpload& gpu : group) {
+        gpu.job.fast = fast;
+        if (encode_budget && gpu.encode) {
+          encode_ns += blocks(gpu.encoding) * dev.speed.upscale_ns;
+        } else if (encode_budget && gpu.job.transcode) {
+          encode_ns += blocks(gpu.job) * (fast ? dev.speed.fast_transcode_ns
+                                               : dev.speed.transcode_ns);
+        }
+      }
+    }
     if (encode_ns > 0 && encode_budget) {
       // Re-uploads too: only the first is prepaid at creation.
       double prepaid = 0;
-      if (const auto record = images.find(image); record != images.end()) {
+      if (record != images.end()) {
         prepaid = std::min(record->second.prepaid_ns, encode_ns);
         record->second.prepaid_ns -= prepaid;
       }
@@ -4037,12 +4058,9 @@ VkResult VulkanEtc2Emulation::CreateImage(VkDevice device,
   };
   bool transcoded = bc_eligible(scale);
   double prepaid = 0;
+  bool fast = false;
   if (transcoded && state_->encode_budget && dev->speed.transcode_ns > 0) {
-    prepaid = state_->BudgetEncode(*dev, *create_info, scale);
-    transcoded = prepaid > 0;
-    if (!transcoded) {
-      reserve_decoded();
-    }
+    prepaid = state_->BudgetEncode(*dev, *create_info, scale, &fast);
   }
   if (transcoded) {
     format.host_format = bc_format;
@@ -4058,8 +4076,9 @@ VkResult VulkanEtc2Emulation::CreateImage(VkDevice device,
   size_host();
   VkResult result = dev->create_image(device, &host_info, allocator, image);
   if (transcoded && result != VK_SUCCESS) {
-    state_->RefundEncode(*dev, prepaid, scale);
+    state_->RefundEncode(*dev, prepaid, scale, fast);
     prepaid = 0;
+    fast = false;
     transcoded = false;
     reserve_decoded();
     LookupEmulatedEtc2Format(create_info->format, &format);
@@ -4103,11 +4122,12 @@ VkResult VulkanEtc2Emulation::CreateImage(VkDevice device,
       record.bytes = bytes;
       record.transcoded = transcoded;
       record.prepaid_ns = prepaid;
+      record.fast_encode = fast;
       record.may_override = may_override;
       record.asked_scale = asked_scale;
       state_->texture_bytes.compressed += bytes.compressed;
       state_->texture_bytes.decoded += bytes.decoded;
-      // A failed encode prepay leaves the image decoded, larger than the
+      // A failed BC image creation leaves the image decoded, larger than the
       // BC size reserved, so both counts take the real size. Only the
       // difference moves reserved_since_free: a refresh since the
       // reservation may already have taken it out.
@@ -4139,8 +4159,10 @@ VkResult VulkanEtc2Emulation::CreateImage(VkDevice device,
                    static_cast<int>(create_info->format),
                    static_cast<int>(format.host_format), top);
     }
-  } else if (reserved != 0) {
-    state_->ReleaseUpscale(reserved);
+  } else {
+    if (reserved != 0) {
+      state_->ReleaseUpscale(reserved);
+    }
   }
   return result;
 }
@@ -4201,6 +4223,12 @@ EmulatedTextureBytes VulkanEtc2Emulation::TextureBytes() const {
 Etc2GpuSpeed VulkanEtc2Emulation::GpuSpeed(VkDevice device) const {
   const HostDevice* dev = state_->Find(device);
   return dev == nullptr ? Etc2GpuSpeed{} : dev->speed;
+}
+
+bool VulkanEtc2Emulation::EncodesFast(VkImage image) const {
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  const auto it = state_->images.find(image);
+  return it != state_->images.end() && it->second.fast_encode;
 }
 
 VkResult VulkanEtc2Emulation::CreateImageView(
@@ -5648,10 +5676,11 @@ bool VulkanEtc2Emulation::EnableGpuDecode(VkDevice device, VkQueue queue,
                               &error)) {
       dev->speed = speed;
       std::fprintf(stderr,
-                   "  [vulkan] BC encode speed: transcode %.1f ns/block, "
-                   "upscale %.1f ns/block; small texture upscale %ux; "
-                   "encode budget on\n",
-                   speed.transcode_ns, speed.upscale_ns, state_->upscale);
+                   "  [vulkan] BC encode speed: transcode %.1f ns/block "
+                   "(fast %.1f), upscale %.1f ns/block; small texture upscale "
+                   "%ux; encode budget on\n",
+                   speed.transcode_ns, speed.fast_transcode_ns,
+                   speed.upscale_ns, state_->upscale);
     } else {
       std::fprintf(stderr,
                    "  [vulkan] BC encode speed probe failed (%s); encodes "

@@ -196,6 +196,9 @@ class RuntimeConfig {
   const std::string& vsync_mode() const { return vsync_mode_; }
   // Keep ETC2/EAC textures compressed as BC7/BC4/BC5 on the GPU.
   bool texture_compression() const { return texture_compression_; }
+  // Off, the asset_overlay folder and the texture override PNGs are ignored.
+  bool asset_overlay() const { return asset_overlay_; }
+  bool texture_overrides() const { return texture_overrides_; }
   const std::string& present_mode() const { return present_mode_; }
   static bool IsValidPresentMode(std::string_view mode) {
     return mode == "auto" || mode == "fifo" || mode == "mailbox" ||
@@ -275,6 +278,8 @@ class RuntimeConfig {
   FrameRatePolicy frame_rate_;
   std::string vsync_mode_ = "auto";
   bool texture_compression_ = true;
+  bool asset_overlay_ = true;
+  bool texture_overrides_ = true;
   std::string present_mode_ = "auto";
   std::string pipeline_cache_mode_ = "on";
   GraphicsQualityConfig graphics_quality_;

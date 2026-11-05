@@ -365,6 +365,11 @@ RuntimePaths RuntimePaths::FromEnvironment(
     paths.sky_transcode_cache_dir_ =
         paths.cache_root_ / "graphics/sky-transcodes";
   }
+  paths.texture_override_dir_ =
+      environment.HasNonEmpty("MOCKTAIL_TEXTURE_OVERRIDE_DIR")
+          ? std::filesystem::path(
+                environment.GetOr("MOCKTAIL_TEXTURE_OVERRIDE_DIR", ""))
+          : paths.config_root_ / "textures";
   return paths;
 }
 
@@ -629,7 +634,7 @@ bool ExportRuntimePathEnvironment(const RuntimePaths& paths,
          SetEnvironmentDefault("MOCKTAIL_PIPELINE_CACHE_DIR",
                                paths.pipeline_cache_dir(), error) &&
          SetEnvironmentDefault("MOCKTAIL_TEXTURE_OVERRIDE_DIR",
-                               paths.config_root() / "textures", error) &&
+                               paths.texture_override_dir(), error) &&
          SetEnvironmentDefault("MOCKTAIL_ASSET_OVERLAY_DIR",
                                paths.asset_overlay_dir(), error) &&
          SetEnvironmentDefault("MOCKTAIL_SKY_TRANSCODE_CACHE_DIR",

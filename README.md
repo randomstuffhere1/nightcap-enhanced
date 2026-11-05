@@ -44,7 +44,8 @@ side by side.
   that do not do this; set `graphics.pipeline_cache: off` to turn it off.
 - **Your own cursors, fonts and skies.** Drop files in
   `~/.local/share/mocktail/asset_overlay` and Nightcap uses them. The layout
-  matches Sober's `asset_overlay` folder. See
+  matches Sober's `asset_overlay` folder. Settings > Customization imports
+  sky packs and switches between them. See
   [`textures/`](textures/README.md) for which folder to use.
 - **Plays more games.** Nightcap answers a server check that some experiences
   use, so you can join and stay in those too.

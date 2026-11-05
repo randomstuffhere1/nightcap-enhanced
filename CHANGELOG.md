@@ -26,6 +26,13 @@ Release notes on GitHub are taken from the matching section here.
   KWallet, instead of a private file. Turn on "Keep the sign-in in the keyring" under Settings >
   Advanced > Sign-in (`auth.use_libsecret`). It is off by default. Signing out from Roblox also clears
   the keyring copy, and the hardware cursor reads its sign-in from the keyring too.
+- A Customization page in Settings. Sky shows a grid of previews: Roblox's own and every sky in the library
+  (`~/.local/share/mocktail/skies`). Import adds sky packs from a folder or a .zip, including a zip of
+  pack zips: six images up to 2048 px named like `sky_bk` … `sky_up`, as PNG, JPEG, WebP, DDS or Roblox
+  .tex files. An import can be cancelled. A sky already in the asset folder is kept in the library as
+  "Custom sky" before another replaces it. Switches turn the asset folder
+  (`assets.overlay`) and texture overrides (`assets.texture_overrides`) off without deleting files,
+  and rows open the sky library, asset folder and textures folder.
 - `mocktail --version` prints the build, and Settings > Advanced > About shows it with a copy button,
   as the version, the revision since the last release and the commit, like `0.4.0 r54 (8bb1521)`.
 - The Fleasion page in Settings shows a badge for its proxy: Running, Not running, or Not checked for
@@ -65,7 +72,7 @@ Release notes on GitHub are taken from the matching section here.
 
 - A custom sky in the asset overlay folder now shows on Vulkan. Put Android-format `sky512_*.tex` files in
   `content/android/textures/sky/`. Nightcap converts the stock sky so Vulkan can draw it, but skipped
-  overlay files.
+  overlay files. The session log now names each overlay file the game uses.
 - With texture compression off, small textures such as crosshairs no longer turn blurry when the game
   copies them in while it streams textures. With it on, such a texture no longer shows an old picture
   after the game moves it between textures, or turns black on slower GPUs.
@@ -172,10 +179,11 @@ Release notes on GitHub are taken from the matching section here.
   The Small texture upscale setting is gone; an old `graphics.small_texture_upscale` is ignored.
   Upscaling runs on the graphics card with a smoothing filter that keeps hard two-colour edges sharp,
   instead of nearest-neighbour on the CPU. Nightcap times the card's BC7 encoder at startup, and while
-  textures load it keeps new ones uncompressed once encoding would take more than a tenth of the GPU's
-  time, so slower cards no longer stutter with Compress textures on. The log shows the
-  measured speed and what was held back. Upscaling adds sharper levels above a texture's own and leaves
-  Roblox's smaller levels as they are, so streamed textures keep their detail at a distance.
+  textures load it switches new ones to a fast encoder at 40% less GPU cost once encoding would take
+  more than a tenth of the GPU's time, so slower cards stutter less with Compress textures on. Every
+  texture stays compressed, so video memory no longer climbs during long sessions. The log shows the
+  measured speed and how many used the fast encoder. Upscaling adds sharper levels above a texture's
+  own and leaves Roblox's smaller levels as they are, so streamed textures keep their detail at a distance.
 
 
 ## [0.4.0] - 2026-10-18

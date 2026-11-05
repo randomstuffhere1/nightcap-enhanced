@@ -198,10 +198,13 @@ struct Field {
   std::string_view literals;
 };
 
-constexpr std::array<Field, 4> kGraphicsFields{
+constexpr std::array<Field, 6> kGraphicsFields{
     Field{"graphics.vsync", "MOCKTAIL_VSYNC", FieldKind::kEnum, 0, 0,
           "auto on off"},
     Field{"graphics.texture_compression", "MOCKTAIL_ETC2_BC_TRANSCODE",
+          FieldKind::kBooleanDigits},
+    Field{"assets.overlay", "MOCKTAIL_ASSET_OVERLAY", FieldKind::kBooleanDigits},
+    Field{"assets.texture_overrides", "MOCKTAIL_TEXTURE_OVERRIDES",
           FieldKind::kBooleanDigits},
     Field{"graphics.present_mode", "MOCKTAIL_PRESENT_MODE", FieldKind::kEnum, 0,
           0, "auto fifo mailbox immediate"},
@@ -979,7 +982,7 @@ bool LoadYaml(const std::filesystem::path& path, ValueMap* values, bool* loaded,
                  key == "graphics" || key == "performance" ||
                  key == "audio" || key == "window" || key == "input" ||
                  key == "compatibility" || key == "network" ||
-                 key == "overlay") {
+                 key == "overlay" || key == "assets") {
         valid = ReadMapping(&document, value_node, key, values, error);
       } else if (key == "integrations") {
         valid = ReadNestedMapping(&document, value_node, key, 2, values, error);
@@ -1249,6 +1252,10 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_AUDIO_BUFFER_SAMPLES",
                           std::to_string(config.audio_buffer_samples()),
                           error) &&
+      SetEnvironmentValue("MOCKTAIL_ASSET_OVERLAY",
+                          config.asset_overlay() ? "1" : "0", error) &&
+      SetEnvironmentValue("MOCKTAIL_TEXTURE_OVERRIDES",
+                          config.texture_overrides() ? "1" : "0", error) &&
       SetEnvironmentValue(
           "MOCKTAIL_MULTITHREADED_RENDERING",
           config.performance().multithreaded_rendering ? "1" : "0", error) &&

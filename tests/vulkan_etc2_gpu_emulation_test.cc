@@ -2258,7 +2258,10 @@ VkDeviceSize CreatedBytes(VulkanEtc2Emulation& emulation, VkDevice device,
   return emulation.TextureBytes().decoded - before;
 }
 
-TEST(VulkanEtc2GpuEmulationTest, KeepsAHeldBackSmallTextureAtTheSetFactor) {
+// Over budget, textures are encoded fast rather than left decoded, so a
+// streamed mip never hops between BC and decoded images. A 256 px RGBA
+// texture takes 64 KiB as BC7 and 256 KiB decoded.
+TEST(VulkanEtc2GpuEmulationTest, CompressesEveryTextureWhileTheBudgetIsInDebt) {
   std::vector<VulkanTestDevice> devices = OpenTestDevices();
   if (devices.empty()) {
     GTEST_SKIP() << "no Vulkan device with a graphics and compute queue";
@@ -2278,12 +2281,19 @@ TEST(VulkanEtc2GpuEmulationTest, KeepsAHeldBackSmallTextureAtTheSetFactor) {
     // An 8192x8192 chain, 5.6 million blocks, costs several bursts even on
     // an RTX 4090 and leaves the budget in debt for longer than the test.
     CreatedBytes(emulation, vk.device, Etc2ImageInfo(8192, 14), &images);
+    constexpr VkDeviceSize kBc = VkDeviceSize{64} << 10;
+    for (int index = 0; index < 12; ++index) {
+      EXPECT_EQ(CreatedBytes(emulation, vk.device, Etc2ImageInfo(256, 1),
+                             &images),
+                kBc);
+      EXPECT_TRUE(emulation.EncodesFast(images.back()));
+    }
     const VkImageCreateInfo small = Etc2ImageInfo(64, 7);
     VkDeviceSize compressed = 0;
     VkDeviceSize decoded = 0;
     ASSERT_TRUE(Etc2ImageByteCounts(EtcFormat::kEtc2Rgba8, small.extent, 7, 1,
                                     kTestUpscale, &compressed, &decoded));
-    EXPECT_EQ(CreatedBytes(emulation, vk.device, small, &images), decoded);
+    EXPECT_LT(CreatedBytes(emulation, vk.device, small, &images), decoded);
     for (VkImage image : images) {
       emulation.DestroyImage(vk.device, image, nullptr);
     }
@@ -2386,7 +2396,9 @@ TEST(VulkanEtc2GpuEmulationTest, ChargesRepeatedUploadsToTheEncodeBudget) {
                                      &region);
     }
     vk.Device<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(commands.buffer);
-    EXPECT_NE(CreatedBytes(emulation, vk.device, small, &images), fresh);
+    EXPECT_FALSE(emulation.EncodesFast(images.front()));
+    EXPECT_EQ(CreatedBytes(emulation, vk.device, small, &images), fresh);
+    EXPECT_TRUE(emulation.EncodesFast(images.back()));
 
     emulation.ReleaseCommandBuffer(commands.buffer);
     DestroyTestCommands(vk, commands);
