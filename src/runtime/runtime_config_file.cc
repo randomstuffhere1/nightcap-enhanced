@@ -198,10 +198,12 @@ struct Field {
   std::string_view literals;
 };
 
-constexpr std::array<Field, 6> kGraphicsFields{
+constexpr std::array<Field, 7> kGraphicsFields{
     Field{"graphics.vsync", "MOCKTAIL_VSYNC", FieldKind::kEnum, 0, 0,
           "auto on off"},
     Field{"graphics.texture_compression", "MOCKTAIL_ETC2_BC_TRANSCODE",
+          FieldKind::kBooleanDigits},
+    Field{"graphics.smooth_texture_loading", "MOCKTAIL_ETC2_ENCODE_BUDGET",
           FieldKind::kBooleanDigits},
     Field{"assets.overlay", "MOCKTAIL_ASSET_OVERLAY", FieldKind::kBooleanDigits},
     Field{"assets.texture_overrides", "MOCKTAIL_TEXTURE_OVERRIDES",
@@ -1240,6 +1242,8 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_VSYNC", config.vsync_mode(), error) &&
       SetEnvironmentValue("MOCKTAIL_ETC2_BC_TRANSCODE",
                           config.texture_compression() ? "1" : "0", error) &&
+      SetEnvironmentValue("MOCKTAIL_ETC2_ENCODE_BUDGET",
+                          config.smooth_texture_loading() ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_PRESENT_MODE", config.present_mode(),
                           error) &&
       SetEnvironmentValue("MOCKTAIL_PIPELINE_CACHE_MODE",

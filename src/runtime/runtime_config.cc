@@ -445,6 +445,8 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
       environment.GetOr("MOCKTAIL_ETC2_BC_TRANSCODE", "1") != "0";
   config.pipeline_cache_mode_ =
       environment.GetOr("MOCKTAIL_PIPELINE_CACHE_MODE", "on");
+  config.smooth_texture_loading_ =
+      environment.GetOr("MOCKTAIL_ETC2_ENCODE_BUDGET", "1") != "0";
   config.asset_overlay_ =
       environment.GetOr("MOCKTAIL_ASSET_OVERLAY", "1") != "0";
   config.texture_overrides_ =

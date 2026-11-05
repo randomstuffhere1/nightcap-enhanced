@@ -29,6 +29,7 @@ constexpr char kSuccessPacket = 'S';
 constexpr char kConfirmationReadyPacket = 'R';
 constexpr char kConfirmationErrorPacket = 'E';
 constexpr int kConfirmationReadyFd = 3;
+constexpr char kLogFolderPacket = 'L';
 constexpr std::size_t kMaximumMessageBytes = 2048;
 
 bool Enabled(const Environment& environment, std::string_view name) {
@@ -344,15 +345,19 @@ FailureDialogMonitor FailureDialogMonitor::Start(
 }
 
 void FailureDialogMonitor::SetMessage(std::string_view message) {
-  if (!active() || message.empty()) {
-    return;
-  }
-  if (!SendPacket(socket_, kMessagePacket, message)) {
-    close(socket_);
-    socket_ = -1;
-    WaitForHelper(helper_pid_);
-    helper_pid_ = -1;
-  }
+  if (!message.empty()) Send(kMessagePacket, message);
+}
+
+void FailureDialogMonitor::SetLogFolder(const std::filesystem::path& folder) {
+  if (!folder.empty()) Send(kLogFolderPacket, folder.string());
+}
+
+void FailureDialogMonitor::Send(char kind, std::string_view payload) {
+  if (!active() || SendPacket(socket_, kind, payload)) return;
+  close(socket_);
+  socket_ = -1;
+  WaitForHelper(helper_pid_);
+  helper_pid_ = -1;
 }
 
 void FailureDialogMonitor::MarkSuccessful() { Finish(kSuccessPacket); }

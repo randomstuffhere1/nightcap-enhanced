@@ -577,6 +577,16 @@ const std::vector<SettingsPage>& SettingsPages() {
                   },
                   "on",
                   {}},
+                {"graphics.smooth_texture_loading",
+                 "Smooth Texture Loading",
+                 "If textures turn black on a low-memory GPU, turn this off. "
+                 "Uses a faster encoder while many textures load, to avoid "
+                 "stutter. Only applies with Compress Textures on. "
+                 "Requires a restart.",
+                 SettingKind::kToggle,
+                 {},
+                 "true",
+                 {}},
             }},
            {"Display",
             {

@@ -2,6 +2,7 @@
 #define MOCKTAIL_RUNTIME_FAILURE_DIALOG_H_
 
 #include <string>
+#include <filesystem>
 #include <string_view>
 
 #include "mocktail/status.h"
@@ -55,10 +56,13 @@ class FailureDialogMonitor final {
 
   bool active() const { return socket_ >= 0; }
   void SetMessage(std::string_view message);
+  // Adds a button to the failure dialog that opens this folder.
+  void SetLogFolder(const std::filesystem::path& folder);
   void MarkSuccessful();
 
  private:
   FailureDialogMonitor(int socket, int helper_pid);
+  void Send(char kind, std::string_view payload);
   void Finish(char disposition);
 
   int socket_ = -1;

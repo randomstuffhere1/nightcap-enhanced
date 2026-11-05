@@ -331,6 +331,47 @@ TEST(HttpDownloadPolicyTest, PointsAtTheDnsFaqWhenAServerAnswersWithoutTls) {
   EXPECT_EQ(other, "TLS connect error: certificate expired");
 }
 
+// Providers that block a site drop, reset or redirect its connections.
+TEST(HttpDownloadPolicyTest, PointsAtTheBlockedNetworkFaqWhenAServerIsCutOff) {
+  const std::pair<int, const char*> blocked[] = {
+      {CURLE_COULDNT_CONNECT,
+       "Failed to connect to api.pureapk.com port 443 after 5001 ms"},
+      {CURLE_OPERATION_TIMEDOUT, "Connection timed out after 5001 milliseconds"},
+      {CURLE_RECV_ERROR, "Recv failure: Connection reset by peer"},
+      {CURLE_GOT_NOTHING, "Empty reply from server"},
+      {CURLE_SSL_CONNECT_ERROR, "Recv failure: Connection reset by peer"},
+      {CURLE_SSL_CONNECT_ERROR,
+       "TLS connect error: unexpected eof while reading"},
+      {CURLE_PEER_FAILED_VERIFICATION,
+       "SSL: no alternative certificate subject name matches target host"},
+      {CURLE_PEER_FAILED_VERIFICATION,
+       "SSL certificate problem: self-signed certificate"},
+  };
+  for (const auto& [code, message] : blocked) {
+    const std::string described = DescribeCurlFailure(code, message);
+    EXPECT_NE(described.find(message), std::string::npos) << described;
+    EXPECT_NE(described.find("blocking"), std::string::npos) << described;
+    EXPECT_NE(described.find("cannot reach the download server"),
+              std::string::npos)
+        << described;
+  }
+  EXPECT_EQ(DescribeCurlFailure(CURLE_WRITE_ERROR, "Failure writing output"),
+            "Failure writing output");
+  // Slow transfers and local clock or CA problems are not blocks.
+  const std::pair<int, const char*> not_blocked[] = {
+      {CURLE_OPERATION_TIMEDOUT,
+       "Operation too slow. Less than 1024 bytes/sec transferred the last 60 "
+       "seconds"},
+      {CURLE_PEER_FAILED_VERIFICATION,
+       "SSL certificate problem: certificate is not yet valid"},
+      {CURLE_PEER_FAILED_VERIFICATION,
+       "SSL certificate problem: unable to get local issuer certificate"},
+  };
+  for (const auto& [code, message] : not_blocked) {
+    EXPECT_EQ(DescribeCurlFailure(code, message), message);
+  }
+}
+
 TEST(ReadinessCanaryTest, PreservesEtc2DriverOverride) {
   TemporaryDirectory temporary;
   CanaryOptions options;
@@ -726,6 +767,8 @@ TEST_F(UpdateCoordinatorDownloadTest,
 
 TEST_F(UpdateCoordinatorDownloadTest,
        ActivatesDownloadedReleaseWhenMetadataIsUnavailable) {
+  // Force both checks to reach the provider instead of reusing the first result.
+  Write(paths.config_file, "updates:\n  check_interval_hours: 0\n");
   UpdateRequest request;
   request.download_only = true;
   ASSERT_TRUE(RunUpdate(paths, request, &provider));
@@ -1112,16 +1155,13 @@ TEST(ShippedMetadataTest, DefaultPayloadHasABuiltinProfileAndMatchingReference) 
   ASSERT_TRUE(catalog) << catalog.error;
   const auto preferred = PreferredSupportedProfile(catalog.profiles);
   ASSERT_TRUE(preferred.has_value());
-  // The catalog carries one supported profile per guest ABI, so the newest one
-  // depends on what this build targets. arm64-v8a has no 2.738.1397 profile.
   if (compat::kGuestAbi == "x86_64") {
-    EXPECT_EQ(preferred->version_name, "2.738.1397");
-    EXPECT_EQ(preferred->version_code, 3092U);
+    EXPECT_EQ(preferred->version_name, "2.742.1059");
+    EXPECT_EQ(preferred->version_code, 3222U);
   } else {
     EXPECT_EQ(preferred->version_name, "2.736.1408");
     EXPECT_EQ(preferred->version_code, 2998U);
   }
-
   const auto payload = nlohmann::json::parse(
       ReadFile(root / "config/roblox_payload.json"));
   if (payload.at("abi").get_ref<const std::string&>() != compat::kGuestAbi) {
@@ -1166,6 +1206,8 @@ TEST(ShippedMetadataTest, DefaultPayloadHasABuiltinProfileAndMatchingReference) 
             builtin->init_array_count);
   EXPECT_EQ(builtin->default_allocator_strategy,
             compat::HostAllocatorStrategy::kNativeMimalloc);
+  EXPECT_EQ(builtin->native_mimalloc_thread_initializer_after_constructor,
+            profile.at("native_mimalloc_thread_initializer_after_constructor"));
 }
 
 std::string ActivationManifestFixture(const std::string& payload_id) {

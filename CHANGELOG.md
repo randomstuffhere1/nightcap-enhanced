@@ -5,6 +5,8 @@ Release notes on GitHub are taken from the matching section here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-05
+
 ### Added
 
 - `window.close_on_leave` closes Nightcap when you leave an experience instead of leaving it open on the
@@ -72,7 +74,8 @@ Release notes on GitHub are taken from the matching section here.
 
 - A custom sky in the asset overlay folder now shows on Vulkan. Put Android-format `sky512_*.tex` files in
   `content/android/textures/sky/`. Nightcap converts the stock sky so Vulkan can draw it, but skipped
-  overlay files. The session log now names each overlay file the game uses.
+  overlay files. The session log now names each overlay file the game uses, and logs every time the game
+  opens a sky file, with its source, format and time.
 - With texture compression off, small textures such as crosshairs no longer turn blurry when the game
   copies them in while it streams textures. With it on, such a texture no longer shows an old picture
   after the game moves it between textures, or turns black on slower GPUs.
@@ -144,18 +147,30 @@ Release notes on GitHub are taken from the matching section here.
 - When the Roblox updater crashes or quits without saying why, the session log and error dialog now
   give its exit status or signal instead of only "Roblox update preflight failed". When DNS cannot find
   a download server, the error points to a new FAQ entry with the commands to switch DNS servers.
+  When the server cannot be reached or the connection is cut, the error says your network may be
+  blocking it and points to a FAQ entry on using a VPN or another network. The dialog also shows the
+  updater's reason when the download progress window was open, instead of "without reporting a reason".
+  Error dialogs are titled "Nightcap" instead of "Crash", and an update failure leads with what to do,
+  with the network error below it.
 - A Roblox update is no longer rejected when the NVIDIA driver crashes as the test launch shuts down,
   after the update has already drawn frames.
 - PCs with 4 GB of RAM now get a larger texture budget instead of Roblox's 64 MB mobile default.
   The budget now applies to any PC with at least 2 GB, at an eighth of its memory.
 - Large `fflags.json` files load, and the settings window opens them. Both used to refuse a file over
   64 KiB.
+- From upstream: a changed `window.width` or `window.height` now applies instead of the size Nightcap
+  remembered from the last session. Thanks to @justacalico.
+- From upstream: typed text with spaces at the end of a wrapped line no longer puts the text cursor in
+  the wrong place, such as in the chat box.
+- From upstream: a crash when Roblox passed an invalid Java string is fixed. Thanks to @justacalico.
 
 ### Changed
 
 - Nightcap comments out the retired `graphics.small_texture_upscale` and
   `performance.small_texture_upscale` settings in `config.yaml` when it launches,
   logging a warning for each one it removes. The old lines stay as comments.
+- From upstream: Roblox 2.742.1059 runs with a profile tested for that exact build instead of as an
+  experimental build, and new installs start on it.
 - In Settings > Input, System cursor theme is now called System cursor, and Hardware cursor is now
   Desktop-drawn game cursor, under More, with a description of what it is for.
 - Roblox updates now download in the background while Nightcap runs and install on the next launch.
@@ -182,7 +197,9 @@ Release notes on GitHub are taken from the matching section here.
   textures load it switches new ones to a fast encoder at 40% less GPU cost once encoding would take
   more than a tenth of the GPU's time, so slower cards stutter less with Compress textures on. Every
   texture stays compressed, so video memory no longer climbs during long sessions. The log shows the
-  measured speed and how many used the fast encoder. Upscaling adds sharper levels above a texture's
+  measured speed and how many used the fast encoder. The Smooth Texture Loading setting
+  (`graphics.smooth_texture_loading`) turns this off, so every texture gets the full encoder right away;
+  try it if textures turn black on a low-memory GPU. Upscaling adds sharper levels above a texture's
   own and leaves Roblox's smaller levels as they are, so streamed textures keep their detail at a distance.
 
 
@@ -599,7 +616,8 @@ First Nightcap release, forked from komaruworld/mocktail.
 - The FMOD output-device bridge is optional, so the updater no longer fails without it.
 - The AppImage build no longer fails on stale checksums for the slimmed Arch packages.
 
-[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.0
 [0.4.0]: https://github.com/CoderDayton/nightcap/releases/tag/v0.4.0
 [0.3.4]: https://github.com/CoderDayton/nightcap/releases/tag/v0.3.4
 [0.3.3]: https://github.com/CoderDayton/nightcap/releases/tag/v0.3.3
