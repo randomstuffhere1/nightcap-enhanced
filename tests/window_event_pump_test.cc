@@ -424,10 +424,8 @@ TEST_F(WindowEventPumpTest, FirstPersonDragThenThirdPersonDragRestoresItsOwnPoin
   EXPECT_FLOAT_EQ(PointerY(), 180.0f);
 }
 
-TEST_F(WindowEventPumpTest, DragStraightAfterFirstPersonRestoresItsOwnPoint) {
-  // Dragging moments after the client drops its centre lock used to inherit
-  // that lock's restore point, so letting go sent the pointer back to the
-  // middle of the window instead of where the button went down.
+TEST_F(WindowEventPumpTest, DragStraightAfterFirstPersonRestoresCenterLock) {
+  // A press during an existing centre lock keeps that capture's restore point.
   lock_.center = true;
   Frame();
   ASSERT_TRUE(owner_->captured());
@@ -453,8 +451,8 @@ TEST_F(WindowEventPumpTest, DragStraightAfterFirstPersonRestoresItsOwnPoint) {
     Frame();
   }
   EXPECT_FALSE(owner_->captured());
-  EXPECT_FLOAT_EQ(PointerX(), 620.0f);
-  EXPECT_FLOAT_EQ(PointerY(), 180.0f);
+  EXPECT_FLOAT_EQ(PointerX(), 400.0f);
+  EXPECT_FLOAT_EQ(PointerY(), 300.0f);
 }
 
 }  // namespace

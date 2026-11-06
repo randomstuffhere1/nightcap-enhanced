@@ -263,14 +263,6 @@ updates:
   # backend, and promote only on success. An existing current payload is
   # preserved when probation fails.
   automatic: true
-  # Integer (default: 6): how long a successful "latest Roblox version" answer
-  # stays usable, in hours. Inside that window a launch reuses the recorded
-  # answer instead of waiting on a network round-trip, which is most of what
-  # the startup preflight costs. 0 asks the provider on every launch. The
-  # trade is that a newly published Roblox build can take up to this long to be
-  # noticed automatically; `make update-auto` and
-  # `mocktail_updater update --force-run-latest` check immediately.
-  check_interval_hours: 6
   # Boolean (default: false): when false, a launch skips re-hashing a payload
   # whose libroblox.so is byte-identical to what was already verified (same
   # size, inode, and modification time). Set true to re-hash the 118 MiB

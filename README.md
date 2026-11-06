@@ -45,7 +45,7 @@ side by side.
 - **Your own cursors, fonts and skies.** Drop files in
   `~/.local/share/mocktail/asset_overlay` and Nightcap uses them. The layout
   matches Sober's `asset_overlay` folder. Settings > Customization imports
-  sky packs and switches between them. See
+  sky packs, switches between them, and imports custom fonts. See
   [`textures/`](textures/README.md) for which folder to use.
 - **Plays more games.** Nightcap answers a server check that some experiences
   use, so you can join and stay in those too.
@@ -72,7 +72,7 @@ Everything else works the same as upstream. See
 and the asset overlay folder, the [roadmap](docs/ROADMAP.md) for what is
 coming next, the [changelog](CHANGELOG.md) for what each release changed,
 [performance](docs/PERFORMANCE.md) for CPU load, heat and the knobs that change
-them, and the [FAQ](FAQ.md) for Discord RPC, logs, and VR.
+them, the [FFlag guide](docs/FFLAGS.md), and the [FAQ](FAQ.md) for Discord RPC, logs, and VR.
 
 ## What this fork adds
 
@@ -121,13 +121,18 @@ chmod +x Nightcap-x86_64.AppImage
 
 ## Install on Arch Linux from the AUR
 
+[`nightcap-bin`](https://aur.archlinux.org/packages/nightcap-bin) installs the
+prebuilt latest release, with nothing to compile.
 [`nightcap-git`](https://aur.archlinux.org/packages/nightcap-git) builds the
-current `main` branch. It is maintained by
+current `main` branch. Both are maintained by
 [@dim-ghub](https://github.com/dim-ghub):
 
 ```bash
-paru -S nightcap-git    # or: yay -S nightcap-git
+paru -S nightcap-bin    # or: yay -S nightcap-bin
+paru -S nightcap-git    # latest main, built from source
 ```
+
+Install one or the other; they replace each other.
 
 ## Install with Flatpak
 
@@ -137,6 +142,16 @@ flatpak run io.github.CoderDayton.nightcap
 ```
 
 Updates arrive through `flatpak update`. Nightcap is not on Flathub yet.
+
+A nightly build of `main` installs beside it and shares its settings:
+
+```bash
+flatpak install --user https://coderdayton.github.io/nightcap/nightcap-nightly.flatpakref
+flatpak run --branch=nightly io.github.CoderDayton.nightcap
+```
+
+`flatpak make-current --user io.github.CoderDayton.nightcap stable` points
+the app menu back at the regular build.
 
 ## Distribution packages
 
@@ -220,6 +235,8 @@ removing the marker.
 
 Put a JSON object in `$XDG_CONFIG_HOME/mocktail/fflags.json` (usually
 `~/.config/mocktail/fflags.json`). Nightcap applies it on the next launch.
+[docs/FFLAGS.md](docs/FFLAGS.md) lists recommended flags, ones to avoid, and
+which flags Nightcap sets itself.
 The Advanced page of the [settings window](#settings) edits this file and
 does not save text that Nightcap could not load.
 

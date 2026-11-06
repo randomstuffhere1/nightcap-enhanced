@@ -772,11 +772,8 @@ whole asset tree on those paths.
   both mtime fields of `libroblox.so` at the moment its SHA-256 was compared
   against the payload metadata. An unchanged file skips a 118 MiB hash. A file
   that was touched in any way misses and is hashed again.
-* **`.version-check.json`** caches the provider's latest-version answer for
-  `updates.check_interval_hours` (default 6). The trade is that a newly
-  published Roblox build can take that long to be noticed automatically;
-  `make update-auto` checks immediately, and `updates.check_interval_hours: 0`
-  turns it off.
+* Version checks now run in the background instead of using a cached answer at
+  startup. `updates.check_interval_hours` no longer controls those checks.
 * **`.file-digest.json`** does the same for the second hash in the host ABI
   profile loader, which would otherwise re-read the same 118 MiB in the same
   launch.
@@ -798,7 +795,6 @@ or in `config.yaml`:
 ```yaml
 updates:
   reverify_library_on_launch: true
-  check_interval_hours: 0
 ```
 
 ### One bug worth naming

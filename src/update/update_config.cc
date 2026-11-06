@@ -183,12 +183,14 @@ UpdateConfigResult LoadUpdateConfig(const std::filesystem::path& path) {
         break;
       }
     } else if (key == "check_interval_hours") {
-      if (!ParseHours(value, &result.config.check_interval_hours)) {
+      std::int64_t ignored = 0;
+      if (!ParseHours(value, &ignored)) {
         result.error =
-            "updates.check_interval_hours must be a whole number of hours "
-            "(0 asks the provider on every launch)";
+            "updates.check_interval_hours must be a whole number of hours";
         break;
       }
+      result.warnings.emplace_back(
+          "updates.check_interval_hours is no longer supported and is ignored");
     } else if (key == "reverify_library_on_launch") {
       if (!ParseBoolean(value, &result.config.reverify_library_on_launch)) {
         result.error =

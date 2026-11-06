@@ -13,7 +13,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <iostream>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <optional>
@@ -30,9 +30,9 @@
 #include "update/apkpure_provider.h"
 #include "update/compatibility_catalog.h"
 #include "update/host_abi_deriver.h"
-#include "update/launch_cache.h"
 #include "update/payload_integrity.h"
 #include "update/payload_store.h"
+#include "update/pinned_apk_provider.h"
 #include "update/readiness_canary.h"
 #include "update/state_file.h"
 #include "update/unsafe_latest_runner.h"
@@ -234,8 +234,21 @@ std::filesystem::path RejectionMarker(
   const compat::BuildIdResult runtime =
       compat::ReadElfBuildId(paths.runtime_binary.string());
   if (!runtime) return {};
-  std::string fingerprint = HashRegularFile(paths.compatibility_manifest) +
-                            HashRegularFile(paths.data_root / "current.json");
+  // The manifest without its activation time, which changes each time another
+  // build sharing this data re-activates the same payload.
+  std::string active;
+  {
+    std::ifstream input(paths.data_root / "current.json");
+    nlohmann::json manifest = nlohmann::json::parse(input, nullptr, false);
+    if (manifest.is_object()) {
+      manifest.erase("activated_at_epoch");
+      active = HashText(manifest.dump());
+    } else {
+      active = HashRegularFile(paths.data_root / "current.json");
+    }
+  }
+  std::string fingerprint =
+      HashRegularFile(paths.compatibility_manifest) + active;
   std::error_code error;
   std::vector<std::filesystem::path> references;
   if (std::filesystem::is_directory(paths.host_abi_reference_profile, error)) {
@@ -302,8 +315,10 @@ void RecordRejection(const UpdatePaths& paths, const Candidate& candidate,
   close(descriptor);
 }
 
-ProviderChain BuildProviderChain() {
+ProviderChain BuildProviderChain(const UpdatePaths& paths) {
   ProviderChain chain;
+  if (!paths.download_sources_manifest.empty())
+    chain.Add(std::make_unique<PinnedApkProvider>(paths.download_sources_manifest));
   chain.Add(std::make_unique<ApkPureProvider>());
   return chain;
 }
@@ -317,7 +332,7 @@ Candidate DownloadCandidate(const ApkProvider* provider, PayloadStore* store,
   result.identity = identity;
   result.exact_supported = exact_supported;
   Progress(progress_fd, "Downloading Roblox...");
-  StageTimer download_timer("download");
+  StageTimer download_timer("download-and-verify");
   const std::filesystem::path archives =
       paths.cache_root / "downloads/native-updater/archives";
   const std::filesystem::path download_directory =
@@ -333,26 +348,24 @@ Candidate DownloadCandidate(const ApkProvider* provider, PayloadStore* store,
     }
     for (const auto& entry : stale) std::filesystem::remove_all(entry, ignored);
   }
-  const ProviderDownloadResult downloaded = provider->DownloadExact(
+  PreparedPayload prepared;
+  std::size_t preparation = 0;
+  const ProviderDownloadResult downloaded = provider->DownloadVerified(
       ProviderVersion{identity.version_name, identity.version_code, {}},
-      download_directory, progress_fd);
+      download_directory, progress_fd,
+      [&](const ProviderDownloadResult& archives) {
+        Progress(progress_fd, "Verifying Roblox...");
+        prepared = PreparePayloadFromArchives(
+            archives.archives, identity, paths.signing_trust_manifest,
+            workspace / ("prepare-" + std::to_string(++preparation)),
+            archives.source + "-native");
+        return prepared.error;
+      });
   if (!downloaded) {
     result.error = downloaded.error;
     return result;
   }
   download_timer.Report();
-  Progress(progress_fd, "Verifying Roblox...");
-  StageTimer prepare_timer("prepare");
-  const PreparedPayload prepared = PreparePayloadFromArchives(
-      downloaded.archives, identity, paths.signing_trust_manifest,
-      workspace / "prepare", downloaded.source + "-native");
-  if (!prepared) {
-    std::error_code ignored;
-    std::filesystem::remove_all(download_directory, ignored);
-    result.error = prepared.error;
-    return result;
-  }
-  prepare_timer.Report();
   StageTimer stage_timer("stage");
   result.staged = store->Stage(prepared.directory);
   if (!result.staged) result.error = result.staged.error;
@@ -495,7 +508,8 @@ ReferenceProfile ResolveReference(
 UpdateResult RunUnsafeLatest(
     const UpdatePaths& paths, const UpdateRequest& request,
     const std::vector<SupportedPayloadProfile>& profiles,
-    const PayloadStoreResult& installed, PayloadStore* store) {
+    const PayloadStoreResult& installed, PayloadStore* store,
+    const ApkProvider& provider) {
   UpdateResult result;
   if (request.startup_preflight || !request.check_latest) {
     result.error =
@@ -503,7 +517,6 @@ UpdateResult RunUnsafeLatest(
     return result;
   }
 
-  const ProviderChain provider = BuildProviderChain();
   Progress(request.progress_fd, "Checking latest Roblox...");
   const ProviderVersion latest = [&] {
     StageTimer timer("check-latest");
@@ -784,6 +797,7 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
   if (!state.is_object()) state = nlohmann::json::object();
   state["schema_version"] = 1;
   state["metadata_status"] = "unchecked";
+  std::uint64_t supported_version_code = 0;
   const auto save_phase = [&](std::string_view phase) {
     state["phase"] = phase;
     state["updated_at"] = std::time(nullptr);
@@ -800,7 +814,8 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
                : nlohmann::json(nullptr);
     result.stale =
         active &&
-        active.version_code < StoredVersion(state["latest_seen"]).version_code;
+        active.version_code < std::max(
+            supported_version_code, StoredVersion(state["latest_seen"]).version_code);
     state["message"] = result.message;
     state["error"] = result.error;
     state["stale"] = result.stale;
@@ -842,6 +857,7 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
     result.error = "no preferred supported Roblox profile is available";
     return finish();
   }
+  supported_version_code = preferred->version_code;
 
   PayloadStore store(paths.data_root, paths.compatibility_manifest,
                      paths.runtime_binary, {},
@@ -865,9 +881,12 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
   } else if (!current) {
     installed = store.InspectCurrent();
   }
+  const ProviderChain providers = BuildProviderChain(paths);
+  const ApkProvider& provider = source != nullptr ? *source : providers;
   if (request.force_run_latest) {
     UpdateResult unsafe =
-        RunUnsafeLatest(paths, request, catalog.profiles, installed, &store);
+        RunUnsafeLatest(paths, request, catalog.profiles, installed, &store,
+                        provider);
     unsafe.warnings = std::move(result.warnings);
     result = std::move(unsafe);
     return finish();
@@ -880,52 +899,34 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
       result.message = "automatic Roblox updates are disabled";
       return finish();
     }
+    // A newer build sharing this data, such as the nightly, can leave a
+    // Roblox version this build cannot run. Go back to the version before it.
+    if (const PayloadStoreResult previous = store.Rollback(); previous) {
+      const PayloadStoreResult verified = store.VerifyCurrent(
+          paths.cache_root.empty()
+              ? std::filesystem::path()
+              : paths.cache_root / compat::kFileDigestRecordDirectory);
+      if (verified) {
+        result.payload_id = verified.payload_id;
+        result.changed = true;
+        result.message =
+            "automatic Roblox updates are disabled; using the installed "
+            "Roblox " + verified.version_name + " this version supports";
+        return finish();
+      }
+    }
     result.error =
         "no runnable payload is installed and automatic updates are disabled";
     return finish();
   }
-  const ProviderChain providers = BuildProviderChain();
-  const ApkProvider& provider = source != nullptr ? *source : providers;
   std::optional<ProviderVersion> latest_version;
-  bool version_check_cached = false;
-  if (request.check_latest) {
+  if (request.startup_preflight) state["metadata_status"] = "deferred";
+  if (request.check_latest && !request.startup_preflight) {
     Progress(request.progress_fd, "Checking Roblox...");
-    // A launch inside the configured interval reuses the last successful answer
-    // instead of waiting on a network round-trip. A stale, missing, or unreadable
-    // record just falls through to the provider below, so this can only ever make
-    // the check cheaper, never skip it for good.
-    VersionCheckCache cached_version;
-    const bool cache_fresh =
-        configured.config.check_interval_hours > 0 &&
-        ReadVersionCheckCache(paths.data_root, &cached_version) &&
-        VersionCheckCacheFresh(cached_version,
-                                configured.config.check_interval_hours,
-                                CacheNowEpoch());
-    version_check_cached = cache_fresh;
-    const ProviderVersion latest = [&] {
-      if (cache_fresh) {
-        StageTimer timer("check-latest-cached");
-        ProviderVersion cached;
-        cached.version_name = cached_version.version_name;
-        cached.version_code = cached_version.version_code;
-        return cached;
-      }
-      StageTimer timer("check-latest");
-      return provider.CheckLatest();
-    }();
+    StageTimer timer("check-latest");
+    const ProviderVersion latest = provider.CheckLatest();
     state["checked_at"] = std::time(nullptr);
     if (latest) {
-      if (!cache_fresh) {
-        std::string cache_error;
-        VersionCheckCache record;
-        record.version_name = latest.version_name;
-        record.version_code = latest.version_code;
-        record.checked_at_epoch = CacheNowEpoch();
-        if (!WriteVersionCheckCache(paths.data_root, record, &cache_error)) {
-          std::cerr << "  [update] cannot record version check: " << cache_error
-                    << '\n';
-        }
-      }
       state["metadata_status"] = "available";
       latest_version = latest;
       if (StoredVersion(state["latest_seen"]).version_code <=
@@ -941,7 +942,10 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
   }
   const ProviderVersion downloaded = StoredVersion(state["latest_downloaded"]);
   if (downloaded && (!latest_version ||
-                     downloaded.version_code > latest_version->version_code)) {
+                     downloaded.version_code > latest_version->version_code) &&
+      (!request.startup_preflight || current ||
+       FindSupportedProfile(catalog.profiles, downloaded.version_name,
+                             downloaded.version_code))) {
     const ExpectedPayloadIdentity identity{
         downloaded.version_name, downloaded.version_code, {}};
     if (FindStagedCandidate(paths, identity, false, false))
@@ -952,16 +956,15 @@ UpdateResult RunUpdate(const UpdatePaths& paths, const UpdateRequest& request,
     result.message = "cannot discover a newer Roblox release";
     return finish();
   }
-  if (current && latest_version &&
-      current.version_code >= latest_version->version_code &&
+  // Startup skips discovery, so with nothing newer downloaded it only needs
+  // the preferred supported version.
+  const bool nothing_newer =
+      latest_version ? current.version_code >= latest_version->version_code
+                     : request.startup_preflight;
+  if (current && nothing_newer &&
       current.version_code >= preferred->version_code) {
     result.payload_id = current.payload_id;
     result.message = "Roblox " + current.version_name + " is installed";
-    if (version_check_cached) {
-      result.message += "; answered from the " +
-                        std::to_string(configured.config.check_interval_hours) +
-                        "h version cache";
-    }
     if (!request.download_only) {
       auto keep = ReferencePayloadIds(paths, catalog.profiles);
       if (downloaded && state["latest_downloaded"].contains("payload_id") &&

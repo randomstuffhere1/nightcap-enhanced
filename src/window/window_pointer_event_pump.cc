@@ -79,7 +79,8 @@ void WindowPointerEventPump::Handle(const platform::PlatformEvent& event,
   if (const auto* button =
           std::get_if<platform::MouseButtonEvent>(&event.payload)) {
     if (button->button == SDL_BUTTON_RIGHT &&
-        !owner_->OnRightButton(button->pressed, text_input_active)) {
+        !owner_->OnRightButton(button->pressed, text_input_active,
+                               PointerPosition{button->x, button->y})) {
       std::fprintf(stderr,
                    "  [input] SDL right-button pointer capture update failed\n");
     }
