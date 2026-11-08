@@ -237,53 +237,24 @@ bool MergePerformanceClientSettingsOverrides(
     const std::string workers = std::to_string(render_worker_count);
     const std::string occlusion_workers =
         std::to_string(std::max(1, render_worker_count / 2));
-    // The environment is the single source both config.yaml and the Intel-only
-    // launch policy write, so reading it here keeps them from disagreeing. An
-    // explicit level is the user's choice and is forwarded as given; only
-    // `auto` leaves the level to the client. Note that this is not a measured
-    // quality setting: it forwards FIntDebugFRMQualityLevelOverride, so a
-    // higher level asks for more shadow and lighting work, not better output
-    // on hardware that cannot afford it.
-    const char* custom_quality = std::getenv("MOCKTAIL_GRAPHICS_QUALITY");
-    const std::string quality_str =
-        (custom_quality != nullptr && custom_quality[0] != '\0')
-            ? custom_quality
-            : "auto";
-    const bool manual_quality =
-        quality_str == "auto" || quality_str == "0" || quality_str == "manual";
-    // Mip bias only distinguishes the lowest level; everything else shares 1.
-    const std::string mip_bias = quality_str == "1" ? "2" : "1";
 
     // ForceCacheSize settings are byte counts. Let Roblox size its mesh and
     // SLIM content caches; values like 256/128 would cap them to a few bytes.
     // Leave MSAA selection to Roblox or explicit client-settings overrides.
     // Forcing one sample disables anti-aliasing even at maximum quality.
-    const std::array<ClientSetting, 67> rendering_settings = {{
+    // Every name here exists in the supported builds. Shadow and texture
+    // sharpness stay with Roblox's quality level.
+    const std::array<ClientSetting, 39> rendering_settings = {{
         {"FIntSmoothClusterTaskQueueMaxParallelTasks", workers},
         {"FIntOcclusionWorkerThreadCount", occlusion_workers},
         {"FFlagMovePrerenderV2", "True"},
-        {"FFlagGcInParallelWithRenderPrepare3", "True"},
-        {"FIntRenderTextureMipBias", mip_bias},
-        {"FFlagSimRuntimeContentTranscodeBlockingCall", "False"},
-        {"FFlagRenderEnableLowEndLOD", "True"},
         {"FIntTerrainArraySliceSize", "4"},
-        {"FFlagFastGPULightGrid", "True"},
-        {"FFlagRenderOptimizeLightGrid", "True"},
-        {"FFlagRenderFixParticlesCulling", "True"},
-        {"FFlagLuauIncrementalGC", "True"},
-        {"FIntLuauGcStepMultiplier", "100"},
-        {"FIntLuauGcGoalRatio", "200"},
-        {"FIntAssetProviderThreads", "2"},
         {"FFlagUITextureCompressionDesktop", "True"},
         {"FFlagTCTextureCompressionDesktop", "True"},
         {"FFlagUITextureUncompressed", "False"},
         {"FFlagGpuVoxelCompression", "True"},
-        {"FFlagMeshCompression", "True"},
         {"FFlagPhysicsMeshCompression", "True"},
-        {"FFlagSupportMeshLOD", "True"},
-        {"FFlagMeshLOD", "True"},
         {"FFlagMeshLodApplyGeomMeshOptimizer", "False"},
-        {"FFlagAdaptiveMeshCacheSizeForAndroid", "True"},
         {"FIntDefaultMeshCacheSizeMB", "64"},
         {"FIntRenderMeshOrphanBudgetMB", "8"},
         {"FIntTerrainGpuMeshMemoryTargetMib", "32"},
@@ -297,42 +268,24 @@ bool MergePerformanceClientSettingsOverrides(
         {"FFlagfeatureFastClusterCacheEnabled", "True"},
         {"FFlagEnableMultiVETextureManagerSharing", "True"},
         {"FFlagVulkanCompressedTextureAliasing", "True"},
-        {"FFlagCSGPublishDedupSolidMesh", "True"},
-        {"FFlagDeduplicateLodRemovalRegions", "True"},
         {"FFlagCurlUsePools", "True"},
         {"FIntRenderTextureCompositorBudget", "32"},
-        {"FIntTextureCompositorActiveJobs", "1"},
         {"FIntTextureCompositorLowResFactor", "2"},
-        {"FIntTextureCompositorMeshCache", "16"},
         {"FFlagContentProviderMmapAssets", "True"},
-        {"FIntAssetProviderAssetCacheReadThreadCount", "1"},
-        {"FIntAssetProviderAssetCacheWriteThreadCount", "1"},
         {"FIntInitialAudioAssetCacheSize", "32"},
         {"FIntAvatarTextureMemoryMax", "33554432"},
         {"FFlagEnableSLIMAvatars", "True"},
         {"FFlagEnableSlimAvatarsDefaultEnabled", "True"},
         {"FFlagLayeredClothingCacheOptimizations", "True"},
-        {"FFlagRenderAllocateShadowMapResourcesOnDemand", "True"},
-        {"FIntRenderShadowMapDepthCacheMemLimit", "16"},
-        {"FIntTM2ShadowMapMaxMips", "1"},
         {"FFlagLuauStartupGcSuppression", "False"},
-        {"FIntLuauGcStepMul", "300"},
         {"FIntLuauGcGoalCore", "120"},
         {"FIntLuauGcStartupWorkingSetMb", "64"},
-        {"FIntLuaGcMaxKb", "262144"},
         {"FIntTaskSchedulerMaxTempArenaSizeBytes", "16777216"},
-        {"FFlagLocalStorageArenaOptimization", "True"},
         {"FIntProjectedMaxBytesUsedForSoundsMB", "32"},
         {"FIntAudioMetadataCacheSizeKB", "2048"},
         {"FIntDefaultAudioDecodeBufferSizeMs", "50"},
-        {"FIntMaxAudibleSoundChannels", "32"},
     }};
     apply_settings(rendering_settings);
-    if (!manual_quality) {
-      SetCompatibleValue(&overrides,
-                         {"FIntDebugFRMQualityLevelOverride", quality_str},
-                         kept_overrides);
-    }
   }
   *merged_json = overrides.dump();
   return true;

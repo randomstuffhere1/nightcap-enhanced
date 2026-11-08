@@ -9,7 +9,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 project(Mocktail
-  VERSION 0.5.0
+  VERSION 0.5.1
   DESCRIPTION "Android Roblox compatibility runtime for Linux"
   LANGUAGES CXX
 )
@@ -151,7 +151,7 @@ if(MOCKTAIL_ENABLE_UNITY_BUILD)
   message(STATUS "Mocktail: unity build enabled (batch 8)")
 endif()
 
-# libjnivm uses C++ exceptions, so these cannot be directory-wide.
+# Per target, so vendored code keeps its own exception and warning flags.
 add_library(mocktail_compile_options INTERFACE)
 target_compile_options(mocktail_compile_options INTERFACE
   "$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wextra;-Wpedantic;-Wno-unused-parameter;-fno-exceptions>"
@@ -190,33 +190,6 @@ if(MOCKTAIL_ENABLE_PCH)
     <variant>
   )
   message(STATUS "Mocktail: precompiled headers enabled")
-endif()
-
-option(MOCKTAIL_ENABLE_UPSTREAM_JNIVM
-  "Build upstream libjnivm for the incremental JNI runtime migration" ON)
-if(MOCKTAIL_ENABLE_UPSTREAM_JNIVM)
-  set(JNIVM_ENABLE_TRACE OFF CACHE BOOL
-    "Enable tracing inside upstream libjnivm")
-  set(JNIVM_ENABLE_GC ON CACHE BOOL
-    "Enable local/global reference tracking inside upstream libjnivm")
-  set(JNIVM_ENABLE_DEBUG OFF CACHE BOOL
-    "Enable upstream libjnivm class-dump/code-generation support")
-  set(JNIVM_ENABLE_RETURN_NON_ZERO OFF CACHE BOOL
-    "Allow upstream libjnivm to fabricate unresolved object return values")
-  set(JNIVM_FAKE_JNI_MINECRAFT_LINUX_COMPAT OFF CACHE BOOL
-    "Enable legacy fake-jni static method promotion")
-  set(JNIVM_ENABLE_TESTS OFF CACHE BOOL
-    "Build upstream libjnivm's own test suite")
-  set(JNIVM_BUILD_EXAMPLES OFF CACHE BOOL
-    "Build upstream libjnivm examples")
-
-  add_subdirectory(third_party/libjnivm EXCLUDE_FROM_ALL)
-  # Work around a missing include in libjnivm.
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(jnivm PRIVATE -include string)
-  endif()
-  target_link_libraries(jnivm PUBLIC Threads::Threads)
-  add_library(Mocktail::UpstreamJni ALIAS jnivm)
 endif()
 
 add_subdirectory(third_party/mcpelauncher-linker)
@@ -419,6 +392,7 @@ add_library(mocktail_runtime STATIC
   src/runtime/owned_pthread.cc
   src/runtime/performance_policy.cc
   src/runtime/pump_stall_diagnostics.cc
+  src/runtime/json_file.cc
   src/runtime/platform_cache_migration.cc
   src/runtime/roblox_desktop_app_policy.cc
   src/runtime/roblox_app_lifecycle.cc
@@ -1057,3 +1031,12 @@ add_dependencies(mocktail mocktail_webview_helper mocktail_cookie_helper)
 if(BUILD_TESTING)
   add_subdirectory(tests)
 endif()
+
+# Manual benchmarks, built only on request (make bench, make bench-startup).
+add_executable(jnivm_session_benchmark EXCLUDE_FROM_ALL
+  tests/perf/jnivm_session_benchmark.cc)
+target_link_libraries(jnivm_session_benchmark PRIVATE
+  Mocktail::LegacyJni Threads::Threads)
+enable_language(C)
+add_library(mocktail_heap_counter MODULE EXCLUDE_FROM_ALL
+  tests/perf/heap_counter.c)

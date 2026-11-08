@@ -460,9 +460,6 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
       environment.GetOr("MOCKTAIL_PHYSICS_WORKER_MODE", "throughput"));
   // The shipped default is 4, matching the ETC2 path's own default, so an
   // absent key keeps the current behaviour rather than silently changing it.
-  config.graphics_quality_.automatic = true;
-  ParseGraphicsQuality(environment.GetOr("MOCKTAIL_GRAPHICS_QUALITY", "auto"),
-                       &config.graphics_quality_);
   config.texture_memory_valid_ =
       ParseUnsignedValue(environment.GetOr("MOCKTAIL_TEXTURE_MEMORY_MB", "0"),
                          &config.texture_memory_mb_);
@@ -618,28 +615,6 @@ GraphicsBackend RuntimeConfig::ParseGraphicsBackend(std::string_view name) {
     return GraphicsBackend::kAngleSwiftShader;
   }
   return GraphicsBackend::kUnknown;
-}
-
-bool ParseGraphicsQuality(std::string_view value, GraphicsQualityConfig* out) {
-  if (out == nullptr) {
-    return false;
-  }
-  // Roblox's own setting uses "manual" for "the user picks a level". Accept it
-  // as a synonym for auto so a value copied out of the client still parses. An
-  // empty value is a key with nothing after it, which is a mistake rather than
-  // a choice, so it is rejected instead of quietly meaning auto.
-  if (value == "auto" || value == "manual" || value == "0") {
-    *out = GraphicsQualityConfig{};
-    return true;
-  }
-  std::uint32_t level = 0;
-  // Roblox exposes 1 to 6 in its own graphics menu.
-  if (!ParseBoundedUnsigned(value, 1, 6, &level)) {
-    return false;
-  }
-  out->automatic = false;
-  out->level = static_cast<int>(level);
-  return true;
 }
 
 }  // namespace runtime

@@ -93,11 +93,6 @@ graphics:
   # stored copy and run the next session uncached, or to off to never read or
   # write one. See docs/PERFORMANCE.md before blaming shaders for a stutter.
   # pipeline_cache: on
-  # String (default: auto): Roblox's own graphics quality level, 1 to 6. auto
-  # leaves the level to the client. A number overrides the value the
-  # multithreaded path would otherwise force, and is the only way to get a
-  # level other than that path's choice.
-  # quality: auto
   # Boolean (default: true): keep ETC2/EAC textures compressed as BC7/BC4/BC5
   # on the GPU to use less video memory. Set false if textures look wrong.
   # texture_compression: true
@@ -324,6 +319,7 @@ bool WriteAll(int file, std::string_view contents, std::string* error) {
 }
 
 constexpr std::string_view kRetiredRuntimeConfigKeys[] = {
+    "graphics.quality",
     "graphics.small_texture_upscale",
     "performance.small_texture_upscale",
 };

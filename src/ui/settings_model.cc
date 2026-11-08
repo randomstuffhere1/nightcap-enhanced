@@ -544,26 +544,6 @@ const std::vector<SettingsPage>& SettingsPages() {
                   },
                   "auto",
                   {}},
-                 {"graphics.quality",
-                  "Graphics quality",
-                  "Roblox's own graphics level. Higher asks for more shadow and "
-                  "lighting work, so it lowers the frame rate rather than "
-                  "sharpening the image.",
-                  SettingKind::kChoice,
-                  {
-                      {"auto", "Automatic"},
-                      {"1", "Level 1"},
-                      {"2", "Level 2"},
-                      {"3", "Level 3"},
-                      {"4", "Level 4"},
-                      {"5", "Level 5"},
-                      {"6", "Level 6"},
-                  },
-                  "auto",
-                  {
-                      {"manual", "auto"},
-                      {"0", "auto"},
-                  }},
                  {"graphics.pipeline_cache",
                   "Pipeline cache",
                   "A fallback copy of the driver's pipeline cache. The client "

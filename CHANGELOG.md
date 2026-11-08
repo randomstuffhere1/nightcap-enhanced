@@ -5,9 +5,17 @@ Release notes on GitHub are taken from the matching section here.
 
 ## [Unreleased]
 
+### Changed
+
+- The window closes as soon as Roblox stops, instead of after audio and display shutdown.
+- Retires `graphics.quality`; set graphics quality in Roblox instead.
+
+## [0.5.1] - 2026-11-06
+
 ### Added
 
 - Copy Log button in Settings → About, for bug reports.
+- Session logs show Roblox's saved graphics quality.
 - Custom font for Roblox's menus and games, in Settings → Appearance. Sky moved there too.
 - Nightly Flatpak from `nightcap-nightly.flatpakref` on the Pages site. It installs next to the regular one.
 
@@ -17,10 +25,16 @@ Release notes on GitHub are taken from the matching section here.
 - With automatic updates off, a Roblox version this build can't run falls back to the one before it.
 - Your picked sky now shows in every game and on the start screen. You'll need to pick it again once.
 - Roblox downloads from GitHub first, with APKPure as a backup.
+- The default "throughput" physics workers no longer lower shadow detail or texture sharpness. Nightcap
+  also stops setting Roblox flags that don't exist or that it named wrong, so Roblox ignored them.
 - Startup no longer waits on an update check. It runs in the background two minutes after launch,
   at low priority so it doesn't slow the game. If Roblox says your version needs an update, it
   starts right away.
 - The old `updates.check_interval_hours` setting no longer applies; background checks use fresh metadata.
+- Runs Roblox 2.746.1266, and new installs start on it. Before, the updater rejected it and stayed on
+  2.742.1059. The audio output-device menu also works on it.
+- Drops the profiles for Roblox 2.736.1408 and older on x86_64. Roblox no longer lets those versions join
+  games. arm64 keeps 2.736.1408 for now.
 
 ### Fixed
 
@@ -639,7 +653,8 @@ First Nightcap release, forked from komaruworld/mocktail.
 - The FMOD output-device bridge is optional, so the updater no longer fails without it.
 - The AppImage build no longer fails on stale checksums for the slimmed Arch packages.
 
-[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.1
 [0.5.0]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.0
 [0.4.0]: https://github.com/CoderDayton/nightcap/releases/tag/v0.4.0
 [0.3.4]: https://github.com/CoderDayton/nightcap/releases/tag/v0.3.4

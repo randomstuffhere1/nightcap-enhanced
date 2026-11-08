@@ -8,7 +8,6 @@
 #include <cerrno>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -108,14 +107,6 @@ void SecureErase(char* data, std::size_t size) {
   for (std::size_t index = 0; bytes != nullptr && index < size; ++index) {
     bytes[index] = '\0';
   }
-}
-
-void SecureEraseArguments(std::vector<std::string>* arguments) {
-  if (arguments == nullptr) return;
-  for (std::string& argument : *arguments) {
-    SecureErase(argument.data(), argument.size());
-  }
-  arguments->clear();
 }
 
 bool QueueAndroidWindowFlags(void*, int flags, int mask) {
@@ -240,7 +231,7 @@ void RequestAccountSwitchRestart(void* vm, bool signed_in) {
       std::cerr << "  [auth] signed out, but the keyring sign-in could not be "
                    "removed\n";
     }
-    std::fill(left.value.begin(), left.value.end(), '\0');
+    SecureErase(left.value.data(), left.value.size());
   }
   std::cout << "  [auth] signed out; restarting at the Roblox sign-in "
                "screen\n";
@@ -535,13 +526,6 @@ int main(int argc, char* argv[]) {
       return EXIT_FAILURE;
     }
   }
-  std::vector<std::string> cgroup_reexec_arguments;
-  if (!mocktail::runtime::BuildCommandLineReexecArguments(
-          command_line.options, argc, argv, &cgroup_reexec_arguments,
-          &command_line_error)) {
-    std::cerr << "[FATAL] " << command_line_error << '\n';
-    return EXIT_FAILURE;
-  }
   mocktail::runtime::ScrubCommandLineLaunchArguments(&command_line.options,
                                                      argc, argv);
   mocktail::runtime::SessionLog session_log;
@@ -749,11 +733,6 @@ int main(int argc, char* argv[]) {
       use_memory_limit
           ? runtime_config.config.performance().memory_limit_bytes()
           : 0;
-  mocktail::runtime::CgroupMemoryLimitResult cgroup_limit;
-  if (use_memory_limit) {
-    cgroup_limit = mocktail::runtime::MaybeReexecWithCgroupMemoryLimit(
-        argc, argv, memory_limit_bytes, &cgroup_reexec_arguments);
-  }
   if (command_line.options.mode == mocktail::runtime::CommandMode::kRun) {
     session_log = mocktail::runtime::SessionLog::Start(
         environment, paths, process_started_at);
@@ -857,6 +836,13 @@ int main(int argc, char* argv[]) {
                   << framerate_error << '\n';
       }
     }
+    if (const std::string quality =
+            mocktail::runtime::DescribeRobloxQualitySettings(
+                paths.android_data_root());
+        !quality.empty()) {
+      std::cout << "  [runtime] Roblox saved graphics quality: " << quality
+                << '\n';
+    }
   }
   if (!mocktail::runtime::ExportNetworkProxyEnvironment(
           runtime_config.config, &command_line_error)) {
@@ -876,13 +862,6 @@ int main(int argc, char* argv[]) {
                 << '\n';
     } else {
       std::cout << "  [network] system proxy=direct\n";
-    }
-  }
-  if (use_memory_limit) {
-    if (cgroup_limit.active()) {
-      std::cout << "  [memory] hard process-tree limit active: "
-                << runtime_config.config.performance().memory_limit_mb
-                << " MiB RAM, swap disabled\n";
     }
   }
   if (command_line.options.mode == mocktail::runtime::CommandMode::kRun) {
@@ -953,7 +932,6 @@ int main(int argc, char* argv[]) {
               << runtime_config.config.performance().memory_limit_mb
               << " MiB\n";
   }
-  SecureEraseArguments(&cgroup_reexec_arguments);
   const bool uses_managed_payload =
       !environment.HasNonEmpty("ROBLOX_LIB_PATH") &&
       runtime_config.config.roblox_library_path() ==
@@ -1084,9 +1062,11 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
           }
           // Built-in profiles supersede stale probation receipts and never
-          // use external overrides.
-          use_external_profile = mocktail::compat::FindHostAbiProfile(
-                                     active_build_id.build_id) == nullptr;
+          // use external overrides. A retired build gets neither.
+          use_external_profile =
+              mocktail::compat::FindHostAbiProfile(active_build_id.build_id) ==
+                  nullptr &&
+              !mocktail::compat::IsRetiredRobloxBuild(active_build_id.build_id);
         }
         if (use_external_profile) {
           if (setenv("MOCKTAIL_COMPATIBILITY_MANIFEST",

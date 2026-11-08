@@ -150,7 +150,7 @@ bool ParsePositiveInt(std::string_view value, int* parsed) {
 //
 // Keys that do not fit stay as explicit code in ValidateAndMap: the ones that
 // validate a value through a parser with its own rules (graphics.backend,
-// graphics.quality, performance.physics_worker_mode, ...), the ones whose value
+// performance.physics_worker_mode, ...), the ones whose value
 // is cross-checked against another key (network.proxy_host with
 // network.proxy_port), and the ones that read a nested mapping (device).
 enum class FieldKind {
@@ -711,14 +711,6 @@ bool ValidateAndMap(const ValueMap& yaml, ValueMap* environment,
   }
   if (!ApplyFields(kGraphicsFields, yaml, environment, error)) {
     return false;
-  }
-  if (const auto quality = value("graphics.quality"); quality.has_value()) {
-    GraphicsQualityConfig parsed;
-    if (!ParseGraphicsQuality(*quality, &parsed)) {
-      *error = "graphics.quality must be auto or 1 to 6";
-      return false;
-    }
-    (*environment)["MOCKTAIL_GRAPHICS_QUALITY"] = parsed.value();
   }
   if (!ApplyFields(kPerformanceFields, yaml, environment, error)) {
     return false;
@@ -1300,8 +1292,6 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
                           error) &&
       SetEnvironmentValue("MOCKTAIL_PIPELINE_CACHE_MODE",
                           config.pipeline_cache_mode(), error) &&
-      SetEnvironmentValue("MOCKTAIL_GRAPHICS_QUALITY",
-                          config.graphics_quality().value(), error) &&
       SetEnvironmentValue("MOCKTAIL_TEXTURE_MEMORY_MB",
                           std::to_string(config.texture_memory_mb()),
                           error) &&

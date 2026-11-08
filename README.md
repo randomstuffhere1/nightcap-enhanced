@@ -287,8 +287,6 @@ You can also edit the file by hand. Useful options:
 - `graphics.present_mode: fifo`, `mailbox`, or `immediate` to pick the
   presentation mode yourself instead of letting `graphics.vsync` decide.
 - `graphics.backend: opengl` if Vulkan does not work on your GPU.
-- `graphics.quality: 1` to `6` to override Roblox's graphics level, or `auto`
-  to leave it to the client.
 - `performance.texture_memory_mb` to raise or lower the texture budget Roblox
   is told about. 0 keeps the automatic figure.
 - `performance.multithreaded_rendering: true` to size Roblox's worker queues

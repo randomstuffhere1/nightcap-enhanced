@@ -1386,8 +1386,6 @@ TEST(ShippedMetadataTest, EveryArchitectureCanUpgradeToThePinnedRelease) {
   const std::filesystem::path root = MOCKTAIL_TEST_SOURCE_DIR;
   const auto catalog = nlohmann::json::parse(
       ReadFile(root / "config/roblox_compatibility.json"));
-  const auto default_payload = nlohmann::json::parse(
-      ReadFile(root / "config/roblox_payload.json"));
   for (const char* filename : {"roblox_payload.json",
                                "roblox_payload.arm64-v8a.json"}) {
     SCOPED_TRACE(filename);
@@ -1409,7 +1407,6 @@ TEST(ShippedMetadataTest, EveryArchitectureCanUpgradeToThePinnedRelease) {
     EXPECT_EQ(preferred->version_name, payload.at("version_name"));
     EXPECT_EQ(preferred->version_code, payload.at("version_code"));
     EXPECT_EQ(preferred->elf_build_id, payload.at("elf_build_id"));
-    EXPECT_EQ(payload.at("version_name"), default_payload.at("version_name"));
     const auto pinned = LoadPinnedApkSource(
         root / "config/roblox_download_sources.json",
         {preferred->version_name, preferred->version_code, {}},
@@ -1439,8 +1436,8 @@ TEST(ShippedMetadataTest, DefaultPayloadHasABuiltinProfileAndMatchingReference) 
   const auto preferred = PreferredSupportedProfile(catalog.profiles);
   ASSERT_TRUE(preferred.has_value());
   if (compat::kGuestAbi == "x86_64") {
-    EXPECT_EQ(preferred->version_name, "2.742.1059");
-    EXPECT_EQ(preferred->version_code, 3222U);
+    EXPECT_EQ(preferred->version_name, "2.746.1266");
+    EXPECT_EQ(preferred->version_code, 20836U);
   } else {
     EXPECT_EQ(preferred->version_name, "2.736.1408");
     EXPECT_EQ(preferred->version_code, 2998U);

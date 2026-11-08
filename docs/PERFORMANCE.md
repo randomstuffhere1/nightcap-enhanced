@@ -249,21 +249,7 @@ as well, since that already means someone is diagnosing this.
 
 ## Settings that ask for more work
 
-Three settings forward a level or a budget rather than changing how Nightcap
-behaves. None of them is a measured speedup, and the honest reason each exists
-is that the value the client or the launch policy would pick is not always the
-one you want.
-
-`graphics.quality` (`auto` by default, or 1 to 6) forwards Roblox's
-`FIntDebugFRMQualityLevelOverride`. `auto` leaves the level to the client. A
-number overrides it, which matters in two places: the multithreaded rendering
-path asks for a level of its own, and `graphics_launch_policy.cc` drops to
-level 1 on an Intel-only machine. Both use a default, so an explicit value in
-`config.yaml` wins over both.
-
-A higher level is not better output. It asks for more shadow and lighting work.
-On hardware that cannot afford it, that is a lower frame rate, not a sharper
-image. Lowering it is the direction that helps a struggling machine.
+Two settings forward a budget or buffer request to the client or audio system.
 
 `performance.texture_memory_mb` (0 by default) overrides the texture budget
 Roblox is told about. 0 keeps the automatic figure, which is an eighth of host

@@ -242,6 +242,7 @@ TEST(RuntimeConfigBootstrapTest, RemovesRetiredSmallTextureUpscaleKeys) {
       "version: 1\n"
       "graphics:\n"
       "  texture_compression: false\n"
+      "  quality: 2\n"
       "  small_texture_upscale: 2\n"
       "performance:\n"
       "  physics_worker_mode: latency\n"
@@ -251,6 +252,7 @@ TEST(RuntimeConfigBootstrapTest, RemovesRetiredSmallTextureUpscaleKeys) {
 
   ASSERT_TRUE(bootstrapped) << bootstrapped.error;
   const std::string text = ReadFile(file);
+  EXPECT_FALSE(GetRuntimeConfigValue(text, "graphics.quality").found);
   EXPECT_FALSE(GetRuntimeConfigValue(text, "graphics.small_texture_upscale").found);
   EXPECT_FALSE(
       GetRuntimeConfigValue(text, "performance.small_texture_upscale").found);
@@ -880,34 +882,10 @@ version: 1
   EXPECT_EQ(loaded.config.pipeline_cache_mode(), "on");
 }
 
-TEST(RuntimeConfigFileTest, ParsesGraphicsQuality) {
-  GraphicsQualityConfig quality;
-  ASSERT_TRUE(ParseGraphicsQuality("auto", &quality));
-  EXPECT_TRUE(quality.automatic);
-  EXPECT_EQ(quality.value(), "auto");
-  // Roblox's own menu uses "manual" for the same thing.
-  ASSERT_TRUE(ParseGraphicsQuality("manual", &quality));
-  EXPECT_TRUE(quality.automatic);
-  ASSERT_TRUE(ParseGraphicsQuality("0", &quality));
-  EXPECT_TRUE(quality.automatic);
-  for (int level = 1; level <= 6; ++level) {
-    ASSERT_TRUE(ParseGraphicsQuality(std::to_string(level), &quality))
-        << level;
-    EXPECT_FALSE(quality.automatic);
-    EXPECT_EQ(quality.level, level);
-    EXPECT_TRUE(quality.valid());
-  }
-  for (const char* bad : {"7", "-1", "high", "1.5", "", " 3", "3 "}) {
-    EXPECT_FALSE(ParseGraphicsQuality(bad, &quality)) << "'" << bad << "'";
-  }
-}
-
 TEST(RuntimeConfigFileTest, AcceptsEveryNewPerformanceSetting) {
   TemporaryDirectory temporary;
   const std::filesystem::path file = temporary.Write(R"yaml(
 version: 1
-graphics:
-  quality: 2
 performance:
   texture_memory_mb: 4096
 audio:
@@ -916,8 +894,6 @@ audio:
   const RuntimeConfigLoadResult loaded =
       LoadRuntimeConfig(MapEnvironment(), file);
   ASSERT_TRUE(loaded) << loaded.error;
-  EXPECT_FALSE(loaded.config.graphics_quality().automatic);
-  EXPECT_EQ(loaded.config.graphics_quality().level, 2);
   EXPECT_EQ(loaded.config.texture_memory_mb(), 4096U);
   EXPECT_EQ(loaded.config.audio_buffer_samples(), 512);
 }
@@ -929,7 +905,6 @@ TEST(RuntimeConfigFileTest, DefaultsForEveryNewPerformanceSetting) {
       LoadRuntimeConfig(MapEnvironment(), file);
   ASSERT_TRUE(loaded) << loaded.error;
   // An absent key must keep the shipped behaviour, not change it.
-  EXPECT_TRUE(loaded.config.graphics_quality().automatic);
   EXPECT_EQ(loaded.config.texture_memory_mb(), 0U);
   EXPECT_EQ(loaded.config.audio_buffer_samples(), 0);
 }
@@ -943,7 +918,6 @@ TEST(RuntimeConfigFileTest, RejectsOutOfRangePerformanceSettings) {
   // Each of these is a value a user could plausibly type, so each has to be
   // reported rather than clamped to something that looks like it worked.
   for (const Case& test_case : {
-           Case{"graphics:\n  quality: 9\n", "graphics.quality"},
            Case{"performance:\n  texture_memory_mb: -5\n",
                 "performance.texture_memory_mb"},
            Case{"performance:\n  texture_memory_mb: 999999\n",

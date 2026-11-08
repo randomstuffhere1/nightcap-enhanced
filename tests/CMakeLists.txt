@@ -1190,6 +1190,17 @@ set_target_properties(host_abi_profile_fixture PROPERTIES
 )
 mocktail_apply_compile_options(host_abi_profile_fixture)
 
+# The same fixture under Roblox 2.736.1408's x86_64 Build ID, which is retired.
+add_library(host_abi_retired_fixture SHARED host_abi_profile_fixture.cc)
+set_target_properties(host_abi_retired_fixture PROPERTIES
+  CXX_VISIBILITY_PRESET default
+  VISIBILITY_INLINES_HIDDEN OFF
+)
+mocktail_apply_compile_options(host_abi_retired_fixture)
+target_link_options(host_abi_retired_fixture PRIVATE
+  -Wl,--build-id=0xade08266c67aee88ec9c1d00902150e1684dad3a
+)
+
 add_executable(host_abi_profile_test host_abi_profile_test.cc)
 target_link_libraries(host_abi_profile_test PRIVATE
   Mocktail::Compat
@@ -1198,8 +1209,11 @@ target_link_libraries(host_abi_profile_test PRIVATE
 )
 target_compile_definitions(host_abi_profile_test PRIVATE
   MOCKTAIL_HOST_ABI_FIXTURE_PATH="$<TARGET_FILE:host_abi_profile_fixture>"
+  MOCKTAIL_HOST_ABI_RETIRED_FIXTURE_PATH="$<TARGET_FILE:host_abi_retired_fixture>"
 )
-add_dependencies(host_abi_profile_test host_abi_profile_fixture)
+add_dependencies(host_abi_profile_test host_abi_profile_fixture
+  host_abi_retired_fixture
+)
 
 add_executable(file_digest_record_test
   file_digest_record_test.cc
@@ -1359,33 +1373,6 @@ set_tests_properties(
   CompatibilityGateTest.UnknownBuildFailsBeforeNativeLoad
   PROPERTIES RESOURCE_LOCK mocktail_current_user_instance
 )
-
-if(MOCKTAIL_ENABLE_UPSTREAM_JNIVM)
-  add_library(upstream_jni_fixture SHARED
-    fixtures/upstream_jni_fixture.cc
-  )
-  target_include_directories(upstream_jni_fixture PRIVATE
-    ${PROJECT_SOURCE_DIR}/third_party/libjnivm/include
-  )
-  set_target_properties(upstream_jni_fixture PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-  )
-
-  add_executable(upstream_jnivm_integration_test
-    upstream_jnivm_integration_test.cc
-  )
-  target_link_libraries(upstream_jnivm_integration_test PRIVATE
-    Mocktail::UpstreamJni
-    GTest::gtest_main
-    Threads::Threads
-    ${CMAKE_DL_LIBS}
-  )
-  target_compile_definitions(upstream_jnivm_integration_test PRIVATE
-    MOCKTAIL_UPSTREAM_JNI_FIXTURE_PATH="$<TARGET_FILE:upstream_jni_fixture>"
-  )
-  add_dependencies(upstream_jnivm_integration_test upstream_jni_fixture)
-endif()
 
 add_executable(libc_shim_test
   libc_shim_test.cc
@@ -1578,9 +1565,7 @@ gtest_discover_tests(bionic_semaphore_runtime_test)
 gtest_discover_tests(bionic_rwlock_runtime_test)
 gtest_discover_tests(bionic_abi_exports_test)
 gtest_discover_tests(bionic_stdio_runtime_test)
-if(MOCKTAIL_ENABLE_UPSTREAM_JNIVM)
-  gtest_discover_tests(upstream_jnivm_integration_test)
-endif()
+
 gtest_discover_tests(libc_shim_test)
 gtest_discover_tests(discord_rpc_test)
 gtest_discover_tests(luau_codegen_switch_test)

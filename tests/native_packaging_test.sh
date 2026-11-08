@@ -97,9 +97,10 @@ for aur_pkgbuild in "${AUR_STABLE_PKGBUILD}" "${AUR_PKGBUILD}"; do
       "${aur_pkgbuild}"; then
     Fail "AUR package downloads build-only submodules: ${aur_pkgbuild}"
   fi
-  grep -Fq -- '-DMOCKTAIL_ENABLE_UPSTREAM_JNIVM=OFF' "${aur_pkgbuild}" ||
-    Fail "AUR package enables the unused upstream JNI test library: ${aur_pkgbuild}"
 done
+# 0.5.1 and older still build upstream libjnivm unless it is turned off.
+grep -Fq -- '-DMOCKTAIL_ENABLE_UPSTREAM_JNIVM=OFF' "${AUR_STABLE_PKGBUILD}" ||
+  Fail "AUR package enables the unused upstream JNI test library"
 grep -Fq -- \
   '-DMOCKTAIL_DEFAULT_COMPATIBILITY_MANIFEST=/usr/share/mocktail/metadata/' \
   "${AUR_PKGBUILD}" ||
@@ -111,7 +112,7 @@ grep -Fq 'git describe' "${AUR_PKGBUILD}" ||
 grep -Fq 'git describe' "${AUR_WORKFLOW}" ||
   Fail 'AUR workflow does not version from the release tag'
 for pkgbuild in "${PKGBUILD}" "${AUR_STABLE_PKGBUILD}" "${AUR_BIN_PKGBUILD}"; do
-  grep -Fqx 'pkgver=0.5.0' "${pkgbuild}" ||
+  grep -Fqx 'pkgver=0.5.1' "${pkgbuild}" ||
     Fail "package version does not match the release being prepared: ${pkgbuild}"
 done
 
@@ -306,6 +307,9 @@ for expected in \
     'uses: ./.github/workflows/build-packages.yml' \
     'channel: release' \
     'Nightcap-x86_64.AppImage' \
+    'uses: ./.github/workflows/flatpak.yml' \
+    'needs: [build, flatpak]' \
+    'Nightcap-x86_64.flatpak' \
     'gh release upload' \
     'uses: ./.github/workflows/aur-publish.yml'; do
   grep -Fq -- "${expected}" "${RELEASE_WORKFLOW}" ||

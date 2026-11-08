@@ -43,22 +43,6 @@ struct WindowConfig {
   bool exclusive_fullscreen_valid = true;
 };
 
-// Roblox's own graphics quality level, forwarded to the client settings.
-// `automatic` leaves the client to choose, which is what the shipped default
-// does; an explicit level overrides the automatic value the throughput path
-// would otherwise force.
-struct GraphicsQualityConfig {
-  bool automatic = true;
-  int level = 3;
-
-  bool valid() const { return automatic || (level >= 1 && level <= 6); }
-  std::string value() const {
-    return automatic ? std::string("auto") : std::to_string(level);
-  }
-};
-
-bool ParseGraphicsQuality(std::string_view value, GraphicsQualityConfig* out);
-
 // Strict decimal helpers shared by the numeric settings. Both reject a sign,
 // whitespace, or any trailing character so a typo is reported rather than
 // quietly becoming the default.
@@ -214,9 +198,6 @@ class RuntimeConfig {
     return pipeline_cache_mode_ == "on" || pipeline_cache_mode_ == "off" ||
            pipeline_cache_mode_ == "clear";
   }
-  const GraphicsQualityConfig& graphics_quality() const {
-    return graphics_quality_;
-  }
   // 0 means "let the texture policy decide from host RAM".
   std::uint64_t texture_memory_mb() const { return texture_memory_mb_; }
   bool texture_memory_valid() const { return texture_memory_valid_; }
@@ -285,7 +266,6 @@ class RuntimeConfig {
   bool texture_overrides_ = true;
   std::string present_mode_ = "auto";
   std::string pipeline_cache_mode_ = "on";
-  GraphicsQualityConfig graphics_quality_;
   std::uint64_t texture_memory_mb_ = 0;
   bool texture_memory_valid_ = true;
   int audio_buffer_samples_ = 0;

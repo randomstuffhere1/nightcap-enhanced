@@ -61,6 +61,23 @@ FALLBACK_CANDIDATE_PAYLOAD_ID = "3222-a67a91ef96c700c0730acd36a250c2f93cfafbc1"
 FALLBACK_CANDIDATE_LIBRARY = (
     PAYLOAD_ROOT / FALLBACK_CANDIDATE_PAYLOAD_ID / "libroblox.so"
 )
+_FIXTURE_MANIFESTS: list[tempfile.TemporaryDirectory] = []
+
+
+def fixture_manifest(*names: str) -> Path:
+    """A compatibility manifest of the named regression builds' runtime answers.
+
+    The shipped manifest no longer lists these older builds.
+    """
+    if not _FIXTURE_MANIFESTS:
+        _FIXTURE_MANIFESTS.append(tempfile.TemporaryDirectory())
+    path = Path(_FIXTURE_MANIFESTS[0].name) / ("-".join(names) + ".json")
+    profiles = [
+        regression_manifest(load_regression_build(name))["profiles"][0]
+        for name in names
+    ]
+    path.write_text(json.dumps({"schema_version": 1, "profiles": profiles}))
+    return path
 
 
 def load_analyzer():
@@ -523,6 +540,20 @@ class ConstructorRangeRemapTest(unittest.TestCase):
             [{"begin": 2, "end_exclusive": 120}],
         )
 
+    def test_added_leading_constructor_runs(self) -> None:
+        # A 2.746 reference: anchors 2, 3, 4 and 6, with an added constructor
+        # at 5 that the reference replay runs.
+        self.assertEqual(
+            ANALYZER.remapped_constructor_ranges(
+                [{"begin": 3, "end_exclusive": 4}, {"begin": 5, "end_exclusive": 100}],
+                (0, 1, 2, 4), 100, 120, (2, 3, 4, 6), 5,
+            ),
+            [
+                {"begin": 3, "end_exclusive": 4},
+                {"begin": 5, "end_exclusive": 120},
+            ],
+        )
+
     def test_rejects_ranges_outside_the_verified_shape(self) -> None:
         for ranges in (
             # Runs a constructor before the leading four.
@@ -689,7 +720,7 @@ class RealPayloadAcceptanceTest(unittest.TestCase):
                     "--reference-profile",
                     str(REFERENCE_PROFILE_PATH),
                     "--reference-compatibility",
-                    str(PROJECT_ROOT / "config" / "roblox_compatibility.json"),
+                    str(fixture_manifest("2908")),
                     "--candidate-lib",
                     str(CANDIDATE_LIBRARY),
                     "--payload-metadata",
@@ -752,7 +783,7 @@ class RealRuntimeCompatibilityAcceptanceTest(unittest.TestCase):
             derived = ANALYZER.derive_runtime_compatibility(
                 reference,
                 candidate,
-                (PROJECT_ROOT / "config" / "roblox_compatibility.json",),
+                (fixture_manifest("2908"),),
             )
 
         self.assertEqual(
@@ -794,8 +825,7 @@ class DeviceListsRuntimeCompatibilityAcceptanceTest(unittest.TestCase):
 
     def derive(self, reference, candidate):
         return ANALYZER.derive_runtime_compatibility(
-            reference, candidate,
-            (PROJECT_ROOT / "config" / "roblox_compatibility.json",),
+            reference, candidate, (fixture_manifest("2998"),),
         )
 
     def test_2998_to_3092_keeps_fullscreen_and_shifted_audio_slots(self):
@@ -873,32 +903,15 @@ class DeviceListsRuntimeCompatibilityAcceptanceTest(unittest.TestCase):
     "local exact 2998, 3092 and 3222 payloads are unavailable",
 )
 class FallbackRuntimeCompatibilityAcceptanceTest(unittest.TestCase):
-    SHIPPED_MANIFEST = PROJECT_ROOT / "config" / "roblox_compatibility.json"
-
-    def manifest_without_reference_bridge(self, temporary):
-        # The shipped manifest is allowed to gain a bridge for the reference
-        # build at any time, so the fallback path is exercised against a copy
-        # that has none rather than against whatever ships today.
-        manifest = json.loads(self.SHIPPED_MANIFEST.read_text())
-        build_id = DEVICE_LISTS_PAYLOAD_ID.split("-", 1)[1]
-        described = False
-        for profile in manifest["profiles"]:
-            if profile.get("elf_build_id") == build_id:
-                profile.pop("fmod_output_device_bridge", None)
-                described = True
-        self.assertTrue(described, "the manifest must still describe the reference")
-        path = Path(temporary) / "roblox_compatibility.json"
-        path.write_text(json.dumps(manifest))
-        return (path,)
+    @classmethod
+    def setUpClass(cls):
+        cls.MANIFESTS = (fixture_manifest("2998"),)
 
     def test_fallback_library_supplies_missing_fmod_bridge(self):
-        # The candidate is not described, so only the fallback can supply it.
-        with tempfile.TemporaryDirectory() as temporary, ANALYZER.ElfImage(
-            DEVICE_LISTS_LIBRARY
-        ) as reference, ANALYZER.ElfImage(FALLBACK_CANDIDATE_LIBRARY) as candidate, ANALYZER.ElfImage(
-            CANDIDATE_LIBRARY
-        ) as fallback:
-            manifests = self.manifest_without_reference_bridge(temporary)
+        # The manifest describes 2998 but not 3092.
+        with ANALYZER.ElfImage(DEVICE_LISTS_LIBRARY) as reference, ANALYZER.ElfImage(
+            FALLBACK_CANDIDATE_LIBRARY
+        ) as candidate, ANALYZER.ElfImage(CANDIDATE_LIBRARY) as fallback:
             without = ANALYZER.derive_runtime_compatibility(
                 reference, candidate, manifests)
             derived = ANALYZER.derive_runtime_compatibility(
