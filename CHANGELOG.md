@@ -5,10 +5,32 @@ Release notes on GitHub are taken from the matching section here.
 
 ## [Unreleased]
 
+### Added
+
+- New FFlag editor in Settings → Advanced. Each known flag says what it does, like more FPS.
+  Flags can be turned off without deleting them, and sets of flags can be saved as presets.
+  Edit as Text still edits fflags.json by hand.
+
 ### Changed
 
 - The window closes as soon as Roblox stops, instead of after audio and display shutdown.
 - Retires `graphics.quality`; set graphics quality in Roblox instead.
+- Settings works with screen readers: sidebar pages, sky tiles, number fields and icon buttons
+  now read their names.
+
+### Fixed
+
+- With Compress Textures off, big games no longer crash small GPUs by running out of video memory.
+  New textures are compressed while it's low, and stay uncompressed otherwise.
+- Fleasion works again on Roblox 2.746. With `integrations.fleasion.enabled`, Nightcap also sets
+  `DFFlagHttpUseEmbeddedCaCerts` to `False`, so Roblox trusts Fleasion's certificate instead of
+  failing every asset request with a TLS error.
+- When Fleasion's Env Proxy isn't running and Sober isn't installed, Nightcap's log and the Fleasion
+  badge in Settings say so. On Linux, Fleasion only starts that proxy when Sober is installed.
+- On KDE Wayland, the cursor no longer jumps to where the previous right-click camera drag started
+  when you let go of the right mouse button.
+- On Roblox 2.746, holding right click over a button or menu no longer freezes the cursor.
+  Nightcap couldn't tell when the camera turns, so it held the cursor on every right click.
 
 ## [0.5.1] - 2026-11-06
 

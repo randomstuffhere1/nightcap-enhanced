@@ -508,6 +508,7 @@ endif()
 mocktail_apply_compile_options(mocktail_failure_dialog)
 
 add_library(mocktail_settings_model STATIC
+  src/ui/fflag_presets.cc
   src/ui/settings_model.cc
   src/ui/sky_pack.cc
 )
@@ -521,6 +522,7 @@ target_link_libraries(mocktail_settings_model PUBLIC
 mocktail_apply_compile_options(mocktail_settings_model)
 
 add_executable(mocktail_settings
+  src/ui/fflag_editor.cc
   src/ui/mocktail_settings.cc
 )
 target_include_directories(mocktail_settings PRIVATE

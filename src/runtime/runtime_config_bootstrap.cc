@@ -94,7 +94,8 @@ graphics:
   # write one. See docs/PERFORMANCE.md before blaming shaders for a stutter.
   # pipeline_cache: on
   # Boolean (default: true): keep ETC2/EAC textures compressed as BC7/BC4/BC5
-  # on the GPU to use less video memory. Set false if textures look wrong.
+  # on the GPU to use less video memory. Set false if textures look wrong;
+  # new textures are then still compressed while video memory is low.
   # texture_compression: true
   # Boolean (default: true): use a faster texture encoder while many textures
   # load, to avoid stutter. Only applies with texture_compression on. Set false
