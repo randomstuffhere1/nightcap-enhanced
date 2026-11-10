@@ -294,6 +294,11 @@ BuildJlinkRuntime() {
     --no-header-files --compress="${compression}" \
     --output "${SUPPORT_RUNTIME}/jre"
 
+  # OpenJDK 25 jlink still emits ELF .debuginfo files. The launcher copies are
+  # executable, so the portable dependency scanner mistakes them for runtime
+  # ELFs, while libjvm.debuginfo alone adds hundreds of megabytes to the bundle.
+  find "${SUPPORT_RUNTIME}/jre" -type f -name '*.debuginfo' -delete
+
   # apkanalyzer needs java.desktop data structures, but neither it nor
   # apksigner uses Java Sound. Some OpenJDK builds link this optional native
   # library against ALSA, which is intentionally absent from the AnyLinux

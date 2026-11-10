@@ -28,7 +28,7 @@ grep -q '^artifact_name=mocktail-linux-x86_64-glibc-standalone$' \
   <<<"${dry_run}"
 grep -q '^interpreter=.*/ld-linux-x86-64\.so\.2$' <<<"${dry_run}"
 grep -q '^android_tools_libc=glibc$' <<<"${dry_run}"
-grep -q '^project_artifacts=18$' <<<"${dry_run}"
+grep -q '^project_artifacts=19$' <<<"${dry_run}"
 grep -q 'host=libc\.so\.6 reason=glibc' <<<"${dry_run}"
 grep -q 'host=libEGL\.so\.1 reason=gpu-driver-stack' <<<"${dry_run}"
 ! grep -q 'host=libwebkitgtk-6\.0\.so\.4' <<<"${dry_run}"
@@ -418,6 +418,8 @@ done
 [[ ! -e "${standalone_runtime}/runtime/bin/python3" ]]
 [[ ! -e "${standalone_runtime}/runtime/python" ]]
 ! find "${standalone_runtime}/runtime/jre" -name 'libjsound*.so' \
+  -print -quit | grep -q .
+! find "${standalone_runtime}/runtime/jre" -type f -name '*.debuginfo' \
   -print -quit | grep -q .
 [[ ! -e "${standalone_runtime}/lib/plugins/glycin-loaders/2+/glycin-heif" ]]
 [[ ! -e "${standalone_runtime}/share/glycin-loaders/2+/conf.d/glycin-heif.conf" ]]
