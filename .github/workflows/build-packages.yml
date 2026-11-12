@@ -210,7 +210,7 @@ jobs:
               # longest single step of this job. Level 19 compresses the same
               # image a few percent larger but about a third faster, so the
               # nightly finishes sooner and the download stays reasonable.
-              export DWARFS_COMP='zstd:level=19 -S26 -B6'
+              export DWARFS_COMP="zstd:level=19 -S26 -B6"
               make appimage BUILD_DIR=build-appimage JOBS=4 \
                 APPIMAGE="dist/$APPIMAGE_NAME" \
                 PORTABLE_MODE=standalone APPIMAGE_FORMAT=anylinux \
