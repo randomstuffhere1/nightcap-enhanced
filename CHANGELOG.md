@@ -15,6 +15,9 @@ Release notes on GitHub are taken from the matching section here.
 
 - The window closes as soon as Roblox stops, instead of after audio and display shutdown.
 - Retires `graphics.quality`; set graphics quality in Roblox instead.
+- Small textures load with less GPU time. Upscaling them takes about a third less, and small textures and
+  mip levels now share GPU work instead of each running alone, so a batch of new 32 px textures finishes
+  in about half the time. They look the same as before.
 - Settings works with screen readers: sidebar pages, sky tiles, number fields and icon buttons
   now read their names.
 
@@ -31,6 +34,10 @@ Release notes on GitHub are taken from the matching section here.
   when you let go of the right mouse button.
 - On Roblox 2.746, holding right click over a button or menu no longer freezes the cursor.
   Nightcap couldn't tell when the camera turns, so it held the cursor on every right click.
+- The chat box keeps its focus when the window loses it, so a clipboard manager or an emoji picker
+  that takes focus for a moment no longer closes the chat box before the text arrives.
+- Clearing a chat command, such as `/w name`, no longer puts the typed text back a moment later.
+- Color emoji now show in the chat box instead of appearing as blank space.
 
 ## [0.5.1] - 2026-11-06
 
@@ -45,7 +52,7 @@ Release notes on GitHub are taken from the matching section here.
 
 - Unknown settings in `config.yaml` are skipped instead of stopping Nightcap from starting.
 - With automatic updates off, a Roblox version this build can't run falls back to the one before it.
-- Your picked sky now shows in every game and on the start screen. You'll need to pick it again once.
+- Your picked sky now shows in every game, in place of the game's own. You'll need to pick it again once.
 - Roblox downloads from GitHub first, with APKPure as a backup.
 - The default "throughput" physics workers no longer lower shadow detail or texture sharpness. Nightcap
   also stops setting Roblox flags that don't exist or that it named wrong, so Roblox ignored them.
