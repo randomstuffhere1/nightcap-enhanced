@@ -1,15 +1,18 @@
 name: ccache
-description: Share one ccache directory between the builds of a scope for a few hours.
+description: Share one ccache directory between the builds of a scope.
 
 # A build writes its ccache directory into the runner, and the runner goes
 # away with the workflow. This action keeps the directory in the repository
 # cache so the next build of the same scope starts warm instead of compiling
 # the whole tree again.
 #
-# Each scope keeps one cache. The key carries the time the cache was written,
-# so a cache that is older than the time to live is dropped rather than used,
-# and the save step removes the older caches of the scope before it writes the
-# new one, which keeps the repository cache quota for the other scopes.
+# Each scope keeps one cache. The save step removes the older caches of the
+# scope before it writes the new one, which keeps the repository cache quota
+# for the other scopes. The cache has no age limit: ccache checks the
+# compiler and the preprocessed source itself, so an old cache still gives
+# correct results and only misses on what changed since it was written.
+# A build that wants a cold cache clears the caches from the workflow
+# dispatch instead.
 
 inputs:
   scope:
@@ -18,9 +21,6 @@ inputs:
   mode:
     description: restore or save.
     required: true
-  ttl:
-    description: How many hours a cache stays usable.
-    default: '24'
   path:
     description: The ccache directory.
     default: .ccache
@@ -45,41 +45,6 @@ runs:
         key: ${{ inputs.scope }}-${{ steps.stamp.outputs.now }}
         restore-keys: |
           ${{ inputs.scope }}-
-
-    - name: Drop a cache that is too old
-      if: inputs.mode == 'restore'
-      shell: bash
-      env:
-        GH_TOKEN: ${{ github.token }}
-        SCOPE: ${{ inputs.scope }}
-        TTL_HOURS: ${{ inputs.ttl }}
-        NOW: ${{ steps.stamp.outputs.now }}
-        CACHE_DIR: ${{ inputs.path }}
-      # The cache bookkeeping must never fail a build.
-      continue-on-error: true
-      run: |
-        set -Eeuo pipefail
-        # The newest cache of the scope is the one the restore took. Its key
-        # carries the time it was written, so its age is known without
-        # trusting the output of the restore step.
-        keys="$(gh api --paginate \
-          "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" \
-          --jq ".actions_caches[] | select(.key | startswith(\"${SCOPE}-\")) | .key")"
-        key="${keys%%$'\n'*}"
-        if [[ -z "$key" ]]; then
-          echo "no cache of ${SCOPE} to check"
-          exit 0
-        fi
-        stamp="${key##*-}"
-        if [[ ! "$stamp" =~ ^[0-9]+$ ]]; then
-          echo "::warning::the cache ${key} carries no time; keeping it"
-          exit 0
-        fi
-        age_hours=$(( (NOW - stamp) / 3600 ))
-        if (( age_hours >= TTL_HOURS )); then
-          echo "::notice::the cache ${key} is ${age_hours}h old; dropping it"
-          rm -rf -- "$CACHE_DIR"
-        fi
 
     - name: Drop the older caches of the scope
       if: inputs.mode == 'save'

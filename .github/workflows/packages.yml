@@ -292,24 +292,40 @@ jobs:
             -F prerelease=true \
             -F draft=false >/dev/null
 
-          # One asset per call, retried: the AppImage and the portable tarball
-          # are hundreds of megabytes, and one transient 5xx used to abort the
-          # step with the rest of the build unpublished. --clobber makes a
-          # retried upload replace the partial asset.
+          # The assets upload at the same time: the AppImage and the portable
+          # tarball are hundreds of megabytes each, and uploading them one
+          # after the other makes the release wait for the slowest of them
+          # twice over. Each upload is still one call per asset, retried: a
+          # transient 5xx used to abort the step with the rest of the build
+          # unpublished. --clobber makes a retried upload replace the partial
+          # asset. The assets have distinct names, so the calls do not race
+          # over the same one.
+          upload_pids=()
           for asset in release/*; do
             [[ -e "$asset" ]] || continue
-            for attempt in 1 2 3; do
-              if gh release upload "$TAG" "$asset" -R "$repo" --clobber; then
-                break
-              fi
-              if [[ "$attempt" -eq 3 ]]; then
-                echo "::error::could not upload ${asset}"
-                exit 1
-              fi
-              echo "::warning::upload of ${asset} failed; retrying"
-              sleep 10
-            done
+            (
+              for attempt in 1 2 3; do
+                if gh release upload "$TAG" "$asset" -R "$repo" --clobber; then
+                  exit 0
+                fi
+                if [[ "$attempt" -eq 3 ]]; then
+                  echo "::error::could not upload ${asset}"
+                  exit 1
+                fi
+                echo "::warning::upload of ${asset} failed; retrying"
+                sleep 10
+              done
+            ) &
+            upload_pids+=("$!")
           done
+          upload_failed=0
+          for pid in "${upload_pids[@]}"; do
+            wait "$pid" || upload_failed=1
+          done
+          if [[ "$upload_failed" -ne 0 ]]; then
+            echo "::error::at least one asset failed to upload"
+            exit 1
+          fi
           # Drop assets left by earlier runs under other names.
           while IFS= read -r asset; do
             case "$asset" in

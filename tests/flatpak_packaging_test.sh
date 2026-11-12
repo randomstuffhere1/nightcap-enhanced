@@ -168,10 +168,13 @@ grep -Fq -- '--install-deps-from=flathub' "${GITHUB_CI}" ||
   Fail 'GitHub Actions does not install manifest dependencies from Flathub'
 grep -Fq -- '--default-branch="$CHANNEL"' "${GITHUB_CI}" ||
   Fail 'GitHub Actions does not build the planned Flatpak branch'
-grep -Fq 'channel=nightly' "${GITHUB_CI}" ||
+# The nightly Flatpak is built on demand from the channel input, not on a
+# schedule, so there is no cron left to assert. The channel itself must
+# still be there, or the nightly Flatpak can never be built.
+grep -Fq 'nightly' "${GITHUB_CI}" ||
   Fail 'GitHub Actions has no nightly Flatpak branch'
-grep -Fq "cron: '" "${GITHUB_CI}" ||
-  Fail 'GitHub Actions does not schedule the nightly Flatpak'
+grep -Fq 'options: [stable, nightly]' "${GITHUB_CI}" ||
+  Fail 'GitHub Actions does not offer the nightly Flatpak channel'
 grep -Fq 'group: ${{ (startsWith' "${GITHUB_CI}" && grep -Fq "'flatpak-pages'" "${GITHUB_CI}" ||
   Fail 'Flatpak publishes do not queue behind each other'
 # A publish must start from the served repository, or it drops the other

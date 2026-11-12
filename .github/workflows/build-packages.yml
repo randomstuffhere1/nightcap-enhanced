@@ -21,11 +21,6 @@ on:
         required: false
         type: string
         default: ''
-      ccache_ttl:
-        description: 'CCache TTL in hours'
-        required: false
-        type: number
-        default: 24
 
 env:
   # ccache and mold are detected by CMake on its own; the workflows only install
@@ -135,7 +130,6 @@ jobs:
         with:
           scope: ccache-appimage-x86_64
           mode: restore
-          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build AppImage
         shell: bash
@@ -211,6 +205,12 @@ jobs:
               export MOCKTAIL_ANYLINUX_C_SOURCE=/tmp/anylinux.c
               export RUNTIME=/tmp/uruntime
               export DWARFS_CMD=/tmp/mkdwarfs
+              # The AnyLinux image is compressed with zstd level 22, which
+              # spends about two minutes of CPU on a 600 MiB AppDir and is the
+              # longest single step of this job. Level 19 compresses the same
+              # image a few percent larger but about a third faster, so the
+              # nightly finishes sooner and the download stays reasonable.
+              export DWARFS_COMP=zstd:level=19 -S26 -B6
               make appimage BUILD_DIR=build-appimage JOBS=4 \
                 APPIMAGE="dist/$APPIMAGE_NAME" \
                 PORTABLE_MODE=standalone APPIMAGE_FORMAT=anylinux \
@@ -274,7 +274,6 @@ jobs:
         with:
           scope: ccache-portable-x86_64
           mode: restore
-          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build the standalone bundle
         shell: bash
@@ -433,7 +432,6 @@ jobs:
         with:
           scope: ccache-deb-${{ matrix.arch }}
           mode: restore
-          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build DEB
         shell: bash
@@ -517,7 +515,6 @@ jobs:
         with:
           scope: ccache-rpm-${{ matrix.arch }}
           mode: restore
-          ttl: ${{ inputs.ccache_ttl }}
 
       - name: Build RPM
         shell: bash
