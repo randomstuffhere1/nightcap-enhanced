@@ -3,6 +3,7 @@
 
 #include <string>
 #include <filesystem>
+#include <optional>
 #include <string_view>
 
 #include "mocktail/status.h"
@@ -18,6 +19,10 @@ bool ShowFailureDialog(const Environment& environment,
                        std::string_view message);
 bool ShowWarningDialog(const Environment& environment,
                        std::string_view message);
+std::optional<bool> AskYesNo(const Environment& environment,
+                             std::string_view heading, std::string_view body,
+                             std::string_view decline,
+                             std::string_view accept);
 
 enum class ConfirmationDialogResult {
   kUnavailable,

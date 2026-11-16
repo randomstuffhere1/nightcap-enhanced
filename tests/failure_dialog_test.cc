@@ -69,7 +69,9 @@ class FakeDialogHelper final {
               "'\\n')\n"
               "    raise SystemExit("
            << one_shot_exit_code_ << ")\n"
-           << "channel = socket.socket(fileno=0)\n"
+              "if len(sys.argv) == 6 and sys.argv[1] == '--question':\n"
+              "    raise SystemExit(int(sys.argv[2]))\n"
+              "channel = socket.socket(fileno=0)\n"
               "while True:\n"
               "    packet = channel.recv(4096)\n"
               "    if not packet:\n"
@@ -140,6 +142,18 @@ TEST(FailureDialogTest, DisablesDialogsForCanaryAndHeadlessLaunches) {
   EXPECT_FALSE(FailureDialogsEnabled(headless));
   EXPECT_FALSE(FailureDialogsEnabled(explicitly_disabled));
   EXPECT_FALSE(FailureDialogsEnabled(no_display));
+}
+
+TEST(FailureDialogTest, QuestionTellsANoFromAClosedDialog) {
+  FakeDialogHelper helper;
+  const MapEnvironment environment = DialogEnvironment(helper);
+  const auto ask = [&](std::string_view exit_code) {
+    return AskYesNo(environment, exit_code, "body", "No", "Yes");
+  };
+  EXPECT_EQ(ask("0"), std::optional<bool>(true));
+  EXPECT_EQ(ask("2"), std::optional<bool>(false));
+  EXPECT_EQ(ask("3"), std::nullopt);
+  EXPECT_EQ(ask("1"), std::nullopt);
 }
 
 TEST(FailureDialogTest, OneShotPassesAUserFacingMessage) {
