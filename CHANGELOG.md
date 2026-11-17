@@ -12,6 +12,8 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Fixed
 
+- A crashed run no longer blocks the next launch with "Roblox appStorage is not a JSON object".
+  An empty `appStorage.json` from an interrupted write is treated as a fresh file.
 - A Nightcap build whose libraries no longer match the system libraries it was built against
   (for example after a libplacebo update) no longer dies inside Roblox with a null call right
   after "RenderView created". It says so at startup and asks for a rebuild instead.

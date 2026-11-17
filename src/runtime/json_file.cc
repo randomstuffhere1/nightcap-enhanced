@@ -61,6 +61,12 @@ JsonFileReadResult ReadJsonObjectFile(const std::filesystem::path& path,
             {},
             std::string(label) + " is not a bounded regular file"};
   }
+  // An empty file carries no JSON object; it is what an interrupted write
+  // leaves behind. Treat it as absent so readers start fresh instead of
+  // hard-failing on a truncated state file.
+  if (status.st_size == 0) {
+    return {};
+  }
 
   std::string bytes(static_cast<std::size_t>(status.st_size), '\0');
   std::size_t offset = 0;

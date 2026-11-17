@@ -65,6 +65,12 @@ bool ReadStorage(const std::filesystem::path& path, nlohmann::json* storage,
     *error = "appStorage is unavailable or exceeds the size limit";
     return false;
   }
+  if (size == 0) {
+    // Truncated by an interrupted write; an empty file holds nothing worth
+    // preserving, so start from a fresh object.
+    *storage = nlohmann::json::object();
+    return true;
+  }
   std::ifstream input(path);
   if (!input ||
       !(*storage = nlohmann::json::parse(input, nullptr, false)).is_object()) {

@@ -305,6 +305,32 @@ TEST(RobloxDesktopAppPolicyTest, RejectsMalformedOrSymlinkedStorage) {
   EXPECT_FALSE(ApplyDesktopAppPolicy(outside, default_path, 42, "invalid"));
 }
 
+TEST(RobloxDesktopAppPolicyTest, RecoversTruncatedEmptyStorage) {
+  // An interrupted write that leaves a 0-byte appStorage.json is "no data",
+  // not "corrupt data"; the next launch must heal it, not refuse to start.
+  TemporaryDirectory temporary;
+  const std::filesystem::path default_path = temporary.path() / "default.json";
+  ASSERT_TRUE(WriteJson(default_path, {{"PlatformGroup", "Unknown"}}));
+  const std::filesystem::path storage_path =
+      temporary.path() / "appData/LocalStorage/appStorage.json";
+  {
+    std::filesystem::create_directories(storage_path.parent_path());
+    const std::ofstream output(storage_path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(output.good());
+    ASSERT_EQ(std::filesystem::file_size(storage_path), 0U);
+  }
+
+  const DesktopAppPolicyResult result =
+      ApplyDesktopAppPolicy(storage_path, default_path, 42, "dark");
+  ASSERT_TRUE(result) << result.error;
+  EXPECT_TRUE(result.app_storage_created);
+  EXPECT_TRUE(result.updated);
+
+  const nlohmann::json storage = ReadJson(storage_path);
+  const nlohmann::json configurations = DecodeConfigurations(storage);
+  ExpectDesktopLayout(DecodePolicy(configurations, "GUAC:-1:app-policy"));
+}
+
 struct OtaFixture {
   std::filesystem::path storage;
   std::filesystem::path backups;
