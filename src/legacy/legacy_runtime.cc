@@ -5381,6 +5381,12 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
       if (!adapter.empty()) {
         h = ::dlopen(adapter.c_str(), RTLD_LAZY | RTLD_GLOBAL);
         exact_adapter = h != nullptr;
+        if (h == nullptr) {
+          const char* why = ::dlerror();
+          std::cerr << "  [warn]  Exact adapter " << adapter << " failed to load"
+                    << (why == nullptr ? "" : ": ") << (why == nullptr ? "" : why)
+                    << '\n';
+        }
       }
     }
     if (h == nullptr) {
@@ -5395,11 +5401,36 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
       std::cout << '\n';
       stub_handles.push_back(h);
       if (std::strcmp(name, "libvulkan.so") == 0) {
+        // Direct Vulkan launches set MOCKTAIL_REQUIRE_REAL_GRAPHICS. The
+        // host Vulkan loader cannot create an Android surface, so the game
+        // draws nothing and dies; refuse instead of running on a graphics
+        // stack we cannot drive.
+        if (!exact_adapter &&
+            IsEnabled("MOCKTAIL_REQUIRE_REAL_GRAPHICS")) {
+          std::cerr << "[FATAL] Nightcap's Vulkan adapter failed to load "
+                       "(see above). This usually means a system library its "
+                       "build linked against changed (for example "
+                       "libplacebo's soname). Rebuild Nightcap against the "
+                       "system libraries.\n";
+          return EXIT_FAILURE;
+        }
         bionic_vulkan_adapter_handle = h;
       }
     } else {
       std::cerr << "  [warn]  Could not preload " << name
                 << ": " << ::dlerror() << '\n';
+      // Direct Vulkan launches set MOCKTAIL_REQUIRE_REAL_GRAPHICS. Running
+      // anyway leaves the guest loader without a vkGetInstanceProcAddr to
+      // call and dies inside the engine with a null call; refuse instead.
+      if (IsEnabled("MOCKTAIL_REQUIRE_REAL_GRAPHICS") &&
+          std::strcmp(name, "libvulkan.so") == 0) {
+        std::cerr << "[FATAL] Nightcap's Vulkan adapter failed to load "
+                     "(see above). This usually means a system library its "
+                     "build linked against changed (for example libplacebo's "
+                     "soname). Rebuild Nightcap against the system "
+                     "libraries.\n";
+        return EXIT_FAILURE;
+      }
     }
   }
   void* real_gles_handle = nullptr;

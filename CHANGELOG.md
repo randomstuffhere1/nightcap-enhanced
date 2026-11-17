@@ -12,6 +12,9 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Fixed
 
+- A Nightcap build whose libraries no longer match the system libraries it was built against
+  (for example after a libplacebo update) no longer dies inside Roblox with a null call right
+  after "RenderView created". It says so at startup and asks for a rebuild instead.
 - A custom sun or moon in the asset overlay folder (`content/sky/sun.jpg`, `moon.jpg`) shows in games,
   also in place of a game's own. Before, Roblox failed to load either one and drew a plain glow instead.
 - Text in Roblox's stats menus (Shift+F5 and the others) shows again with a custom font.
