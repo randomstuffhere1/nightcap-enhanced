@@ -162,6 +162,9 @@ class OtaPatchRestartWatch final {
         std::cout << "  [runtime] restarting once to load the Roblox UI "
                      "downloaded on first launch\n"
                   << std::flush;
+        // A self-initiated restart is deliberate; the exit gate in the
+        // windowed runtime treats it as such rather than a crash.
+        setenv("MOCKTAIL_RESTART_REQUESTED", "1", 1);
         kill(getpid(), SIGTERM);
         return;
       }
@@ -207,6 +210,7 @@ void RequestAccountSwitchRestart(void* vm, bool signed_in) {
                 << "; restarting signed in as the new account\n"
                 << std::flush;
       g_account_switch_restart = true;
+      setenv("MOCKTAIL_RESTART_REQUESTED", "1", 1);
       kill(getpid(), SIGTERM);
     }).detach();
     return;
@@ -237,6 +241,7 @@ void RequestAccountSwitchRestart(void* vm, bool signed_in) {
   std::cout << "  [auth] signed out; restarting at the Roblox sign-in "
                "screen\n";
   std::cout << std::flush;
+  setenv("MOCKTAIL_RESTART_REQUESTED", "1", 1);
   kill(getpid(), SIGTERM);
 }
 
@@ -452,7 +457,7 @@ void UpdateAppImageMenu(const mocktail::runtime::Environment& environment,
 
 }  // namespace
 
-int main(int argc, char* argv[]) {
+static int RealMain(int argc, char* argv[]) {
   // Before anything else, so the startup timeline starts at the process rather
   // than at the first phase that happens to report itself.
   mocktail::runtime::InitStartupTrace();
@@ -1628,4 +1633,15 @@ int main(int argc, char* argv[]) {
     support_bundle_guard.Disarm();
   }
   return runtime_status;
+}
+
+int main(int argc, char* argv[]) {
+  // Static destructors re-enter teardown that the runtime has already
+  // completed (the success path _Exits for the same reason). Everything
+  // useful -- diagnostics, the failure dialog, the support bundle -- is done
+  // once RealMain returns, so skip them here too.
+  const int code = RealMain(argc, argv);
+  std::cout.flush();
+  std::cerr.flush();
+  std::_Exit(code);
 }

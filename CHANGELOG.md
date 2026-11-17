@@ -12,6 +12,9 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Fixed
 
+- A window that closes because Nightcap itself is restarting (first-launch UI reload, switching
+  account) no longer ends the run as a failure, and a failed run ends cleanly instead of crashing
+  while shutting down.
 - A crashed run no longer blocks the next launch with "Roblox appStorage is not a JSON object".
   An empty `appStorage.json` from an interrupted write is treated as a fresh file.
 - A Nightcap build whose libraries no longer match the system libraries it was built against

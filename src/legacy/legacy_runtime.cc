@@ -7439,6 +7439,10 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
   // Set when window.close_on_leave asked for the exit, which is a deliberate
   // exit rather than the runtime falling over before it drew anything.
   bool closed_because_the_player_left = false;
+  // Set when Nightcap itself asked for the exit (a first-launch UI reload or
+  // an account switch restarts the process), also a deliberate exit.
+  const bool restart_requested =
+      std::getenv("MOCKTAIL_RESTART_REQUESTED") != nullptr;
   // The server the session joined, when the host knows it. The overlay asks
   // Roblox about it, so the notice can name the data center.
   std::string observed_game_instance_id;
@@ -7782,7 +7786,8 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
                  "the supported runtime yet.\n";
     return EXIT_FAILURE;
   }
-  if (!real_frame_presented && !closed_because_the_player_left) {
+  if (!real_frame_presented && !closed_because_the_player_left &&
+      !restart_requested) {
     std::cerr << "[FATAL] Windowed runtime exited without a real presented "
                  "frame.\n";
     return EXIT_FAILURE;
