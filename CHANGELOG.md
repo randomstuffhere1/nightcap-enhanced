@@ -5,10 +5,20 @@ Release notes on GitHub are taken from the matching section here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The sign-in captcha puzzle no longer gets covered by a load error when one of its answers is rejected.
+- Joining a game right after launch no longer freezes for seconds while the BC7 encoder is compiling.
+- Session logs no longer include the join ticket from Roblox's teleport log line.
+
+## [0.5.3] - 2026-11-17
+
 ### Added
 
 - The AppImage offers to add Nightcap to the app menu the first time it runs, with Settings and Roblox
   links. The entry hides once the AppImage is deleted and is removed on the next Nightcap start.
+- When Nightcap or Roblox crashes, the session log now shows where: the signal, the thread and a
+  backtrace of library offsets, so a crash report no longer needs a core dump.
 
 ### Fixed
 
@@ -20,9 +30,21 @@ Release notes on GitHub are taken from the matching section here.
 - A Nightcap build whose libraries no longer match the system libraries it was built against
   (for example after a libplacebo update) no longer dies inside Roblox with a null call right
   after "RenderView created". It says so at startup and asks for a rebuild instead.
+- The cursor is no longer lost in games that keep Roblox's mouse lock on without a camera drag. Nightcap
+  captures the pointer once the lock has held steady for a moment.
+- Startup no longer hangs when another Nightcap holds the Roblox update or download lock. It waits,
+  says so in the log, and gives up with a reason.
+- Captcha frames that load `about:srcdoc` or `about:blank#…` are no longer blocked in the sign-in window.
+- `nightcap-bin` requires the libplacebo version it was built with, and Vulkan stops with a message
+  naming the missing library instead of crashing with status 139 during the update check.
 - A custom sun or moon in the asset overlay folder (`content/sky/sun.jpg`, `moon.jpg`) shows in games,
   also in place of a game's own. Before, Roblox failed to load either one and drew a plain glow instead.
 - Text in Roblox's stats menus (Shift+F5 and the others) shows again with a custom font.
+- With Vulkan, Roblox no longer sits on a black window for up to 15 s on first launch or after a driver
+  update. The texture encoder's shaders now compile in the background, and textures load uncompressed
+  until they are ready.
+- When Roblox stops with an error, Nightcap no longer crashes while exiting, so desktops stop
+  showing a crash report on top of Nightcap's own error dialog.
 
 ## [0.5.2] - 2026-11-12
 

@@ -515,11 +515,12 @@ TEST(WindowPointerCaptureOwnerTest,
 }
 
 TEST(WindowPointerCaptureOwnerTest,
-     ProbesTheCurrentPositionLockOnlyWhileADragCanStart) {
+     ProbesTheCurrentPositionLockExceptWhileADragPans) {
   // Answering the probe rewrites an instruction in the game's own code and
   // puts it back, so a thread calling the game's mouse-lock query in between
-  // reads the other mouse behaviour. Nothing needs the answer outside a right
-  // drag, and the latch carries the capture once the pan has started.
+  // reads the other mouse behaviour. The answer is needed both to start a right
+  // drag and to capture a steady position lock, so the probe is skipped only
+  // while a pan is under way and the latch carries the capture then.
   FakeBackend backend;
   QueryState query;
   query.reports_current_position = true;
@@ -527,8 +528,9 @@ TEST(WindowPointerCaptureOwnerTest,
   ASSERT_TRUE(owner.RegisterQuery(Query, &query));
   owner.SetGameSessionActive(true);
 
+  // At rest the steady position-lock capture needs the answer.
   EXPECT_TRUE(owner.Pump(false));
-  EXPECT_FALSE(query.probed);
+  EXPECT_TRUE(query.probed);
 
   EXPECT_TRUE(owner.OnRightButton(true, false));
   EXPECT_TRUE(query.probed);
@@ -537,6 +539,7 @@ TEST(WindowPointerCaptureOwnerTest,
   EXPECT_TRUE(owner.Pump(false));
   EXPECT_TRUE(owner.captured());
 
+  // Once the pan latches, production stops asking for current_position.
   query.probed = false;
   EXPECT_TRUE(owner.Pump(false));
   EXPECT_FALSE(query.probed);
@@ -1420,6 +1423,102 @@ TEST(WindowPointerCaptureOwnerTest, ReleaseMotionSkipsZeroDeltaMotion) {
 
   EXPECT_FALSE(owner.TakeCaptureReleaseMotion(1000, false));
   EXPECT_TRUE(owner.TakeCaptureReleaseMotion(1000, true));
+}
+
+TEST(WindowPointerCaptureOwnerTest, HeldPositionLockCapturesOnceItSettles) {
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend, &FakeFrames, &FakeNowMs);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+  g_fake_frames = 10;
+  g_fake_now_ms = 1000;
+  ASSERT_TRUE(owner.Pump(false));
+
+  query.locked_current_position = true;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(owner.captured());
+  g_fake_frames += 9;
+  g_fake_now_ms += 150;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(owner.captured());
+  g_fake_frames += 1;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_TRUE(owner.captured());
+
+  query.locked_current_position = false;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(owner.captured());
+}
+
+TEST(WindowPointerCaptureOwnerTest, PanLockLingeringAfterRightReleaseDoesNotCapture) {
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend, &FakeFrames, &FakeNowMs);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+  g_fake_frames = 10;
+  g_fake_now_ms = 1000;
+  ASSERT_TRUE(owner.Pump(false));
+
+  query.locked_current_position = true;
+  ASSERT_TRUE(owner.OnRightButton(true, false));
+  g_fake_frames += 30;
+  g_fake_now_ms += 500;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_TRUE(owner.captured());
+
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  EXPECT_FALSE(owner.captured());
+  g_fake_frames += 2;
+  g_fake_now_ms += 32;
+  EXPECT_TRUE(owner.Pump(false));
+  EXPECT_FALSE(owner.captured());
+}
+
+TEST(WindowPointerCaptureOwnerTest, PositionLockCaptureSurvivesARightClick) {
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend, &FakeFrames, &FakeNowMs);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+  g_fake_frames = 10;
+  g_fake_now_ms = 1000;
+  ASSERT_TRUE(owner.Pump(false));
+  query.locked_current_position = true;
+  ASSERT_TRUE(owner.Pump(false));
+  g_fake_frames += 10;
+  g_fake_now_ms += 150;
+  ASSERT_TRUE(owner.Pump(false));
+  ASSERT_TRUE(owner.captured());
+
+  EXPECT_TRUE(owner.OnRightButton(true, false));
+  EXPECT_TRUE(owner.captured());
+  EXPECT_TRUE(owner.OnRightButton(false, false));
+  EXPECT_TRUE(owner.captured());
+}
+
+TEST(WindowPointerCaptureOwnerTest, PositionLockDoesNotCaptureDuringTextInput) {
+  FakeBackend backend;
+  QueryState query;
+  query.reports_current_position = true;
+  WindowPointerCaptureOwner owner(&backend, &FakeFrames, &FakeNowMs);
+  ASSERT_TRUE(owner.RegisterQuery(Query, &query));
+  owner.SetGameSessionActive(true);
+  g_fake_frames = 10;
+  g_fake_now_ms = 1000;
+  ASSERT_TRUE(owner.Pump(false));
+
+  query.locked_current_position = true;
+  for (int frame = 0; frame < 20; ++frame) {
+    g_fake_frames += 1;
+    g_fake_now_ms += 16;
+    EXPECT_TRUE(owner.Pump(true));
+  }
+  EXPECT_FALSE(owner.captured());
 }
 
 }  // namespace

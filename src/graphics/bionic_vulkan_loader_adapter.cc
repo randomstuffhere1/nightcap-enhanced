@@ -22,6 +22,7 @@
 
 #include "mocktail/graphics/android_vulkan_wsi_adapter.h"
 #include "mocktail/graphics/chrome_trace_writer.h"
+#include "mocktail/graphics/deferred_teardown.h"
 #include "mocktail/graphics/vulkan_driver_pin.h"
 #include "mocktail/graphics/present_mode_policy.h"
 #include "mocktail/graphics/vulkan_etc2_emulation.h"
@@ -245,6 +246,26 @@ bool FullscreenTraceEnabled() {
 AdapterState& State() {
   static AdapterState state;
   return state;
+}
+
+mocktail::graphics::DeferredTeardown& Teardown() {
+  static mocktail::graphics::DeferredTeardown teardown;
+  return teardown;
+}
+
+void* HoldLibraryOf(const void* function) {
+  Dl_info info{};
+  if (function == nullptr || dladdr(function, &info) == 0 ||
+      info.dli_fname == nullptr) {
+    return nullptr;
+  }
+  return dlopen(info.dli_fname, RTLD_NOW | RTLD_NOLOAD);
+}
+
+void ReleaseLibrary(void* handle) {
+  if (handle != nullptr) {
+    dlclose(handle);
+  }
 }
 
 template <typename Function>
@@ -1688,6 +1709,13 @@ struct Etc2SubmitRewrite {
 // instead: a VkTimelineSemaphoreSubmitInfo would have to be rebuilt, and a
 // VkDeviceGroupSubmitInfo's pWaitSemaphoreDeviceIndices would be left one
 // entry short of the grown wait list.
+void FinishEtc2Encoder(VkQueue queue) {
+  if (State().etc2.EncoderPending()) {
+    State().text_overlay.WithQueue(
+        queue, [queue] { State().etc2.FinishEncoder(queue); });
+  }
+}
+
 const VkSubmitInfo* PrepareEtc2Submit(VkQueue queue, std::uint32_t submit_count,
                                       const VkSubmitInfo* submits,
                                       Etc2SubmitRewrite* rewrite) {
@@ -1928,7 +1956,11 @@ VKAPI_ATTR void VKAPI_CALL
 vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator) {
   const auto host_destroy = reinterpret_cast<PFN_vkDestroyInstance>(
       HostInstanceProc(instance, "vkDestroyInstance"));
-  if (host_destroy != nullptr) {
+  if (host_destroy != nullptr && Teardown().Busy()) {
+    std::fprintf(stderr,
+                 "  [vulkan] keeping the old Vulkan instance; destroying it "
+                 "after the new one crashes the NVIDIA driver\n");
+  } else if (host_destroy != nullptr) {
     host_destroy(instance, allocator);
   }
   AdapterState& state = State();
@@ -2326,6 +2358,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(
     if (host_get_queue != nullptr) {
       host_get_queue(*device, graphics_family, 0, &decode_queue);
     }
+    State().etc2.SetEncoderBuildWait(std::chrono::milliseconds(200));
     State().etc2.EnableGpuDecode(*device, decode_queue, graphics_family);
   }
 
@@ -2354,17 +2387,33 @@ vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator) {
   const auto host_destroy = reinterpret_cast<PFN_vkDestroyDevice>(
       HostDeviceProc(device, "vkDestroyDevice"));
   State().text_overlay.DestroyDevice(device);
-  State().etc2.DestroyDevice(device);
   {
     AdapterState& state = State();
     std::lock_guard<std::mutex> lock(state.pipeline_cache_mutex);
     state.pipeline_caches.RemoveDevice(
         reinterpret_cast<std::uintptr_t>(device));
   }
-  if (host_destroy != nullptr) {
-    host_destroy(device, allocator);
+  if (State().etc2.EncoderBuilding(device)) {
+    std::fprintf(stderr,
+                 "  [vulkan] BC7 encoder still compiling; destroying the old "
+                 "device in the background\n");
+    RemoveHostDeviceDispatch(device);
+    void* const library =
+        HoldLibraryOf(reinterpret_cast<const void*>(host_destroy));
+    Teardown().Post([device, allocator, host_destroy, library] {
+      State().etc2.DestroyDevice(device);
+      if (host_destroy != nullptr) {
+        host_destroy(device, allocator);
+      }
+      ReleaseLibrary(library);
+    });
+  } else {
+    State().etc2.DestroyDevice(device);
+    if (host_destroy != nullptr) {
+      host_destroy(device, allocator);
+    }
+    RemoveHostDeviceDispatch(device);
   }
-  RemoveHostDeviceDispatch(device);
   if (auto* trace = mocktail::graphics::ActiveProfileTrace();
       trace != nullptr) {
     trace->Flush();
@@ -2851,6 +2900,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(
   mocktail::graphics::TraceScope scope(mocktail::graphics::ActiveProfileTrace(),
                                        "vkQueueSubmit", "submit");
   scope.Arg("submits", submit_count);
+  FinishEtc2Encoder(queue);
   Etc2SubmitRewrite rewrite;
   const VkSubmitInfo* prepared =
       PrepareEtc2Submit(queue, submit_count, submits, &rewrite);
@@ -2873,6 +2923,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(
   mocktail::graphics::TraceScope scope(mocktail::graphics::ActiveProfileTrace(),
                                        "vkQueueSubmit2", "submit");
   scope.Arg("submits", submit_count);
+  FinishEtc2Encoder(queue);
   Etc2SubmitRewrite rewrite;
   const VkSubmitInfo2* prepared =
       PrepareEtc2Submit2(queue, submit_count, submits, &rewrite);
@@ -2895,6 +2946,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2KHR(
   mocktail::graphics::TraceScope scope(mocktail::graphics::ActiveProfileTrace(),
                                        "vkQueueSubmit2KHR", "submit");
   scope.Arg("submits", submit_count);
+  FinishEtc2Encoder(queue);
   Etc2SubmitRewrite rewrite;
   const VkSubmitInfo2* prepared =
       PrepareEtc2Submit2(queue, submit_count, submits, &rewrite);

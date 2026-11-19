@@ -63,6 +63,10 @@ grep -Fq "'libplacebo'" "${PKGBUILD}" ||
   Fail 'Arch package does not declare the graphics composition dependency'
 grep -Fq "'rust'" "${PKGBUILD}" ||
   Fail 'Arch package does not declare the Rust toolchain the kernels need'
+grep -Fq "'libplacebo.so'" "${PKGBUILD}" ||
+  Fail 'Arch package does not pin the libplacebo soname it was built with'
+grep -Fq '.PKGINFO' "${AUR_PUBLISH_WORKFLOW}" ||
+  Fail 'nightcap-bin does not require the sonames of the release package'
 grep -Fq "'ffmpeg'" "${PKGBUILD}" ||
   Fail 'Arch package does not declare the video decoding dependency'
 grep -Fq 'pkgname=nightcap-git' "${AUR_PKGBUILD}" ||
@@ -112,7 +116,7 @@ grep -Fq 'git describe' "${AUR_PKGBUILD}" ||
 grep -Fq 'git describe' "${AUR_WORKFLOW}" ||
   Fail 'AUR workflow does not version from the release tag'
 for pkgbuild in "${PKGBUILD}" "${AUR_STABLE_PKGBUILD}" "${AUR_BIN_PKGBUILD}"; do
-  grep -Fqx 'pkgver=0.5.2' "${pkgbuild}" ||
+  grep -Fqx 'pkgver=0.5.3' "${pkgbuild}" ||
     Fail "package version does not match the release being prepared: ${pkgbuild}"
 done
 

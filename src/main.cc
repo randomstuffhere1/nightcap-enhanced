@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "compat/crash_reporter.h"
 #include "compat/elf_build_id.h"
 #include "compat/file_digest_record.h"
 #include "compat/host_abi_profile.h"
@@ -792,6 +793,9 @@ static int RealMain(int argc, char* argv[]) {
                 << session_log.error() << '\n';
     }
     std::cout << process_launch_diagnostics << std::flush;
+    if (!mocktail::compat::InstallCrashReporter()) {
+      std::cerr << "  [crash] reporter unavailable\n";
+    }
     mocktail::runtime::InstallCpuLimitDiagnostics();
     mocktail::runtime::LogProcessDiagnostics(
         mocktail::runtime::ProcessDiagnosticStage::kStartup);
@@ -1627,6 +1631,13 @@ static int RealMain(int argc, char* argv[]) {
     std::cout.flush();
     std::cerr.flush();
     std::_Exit(EXIT_SUCCESS);
+  }
+  if (command_line.options.mode == mocktail::runtime::CommandMode::kRun) {
+    failure_dialog = mocktail::runtime::FailureDialogMonitor();
+    support_bundle_guard.Finish();
+    std::cout.flush();
+    std::cerr.flush();
+    std::_Exit(runtime_status);
   }
   if (runtime_status == EXIT_SUCCESS) {
     failure_dialog.MarkSuccessful();

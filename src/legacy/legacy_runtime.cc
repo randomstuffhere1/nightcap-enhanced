@@ -5416,21 +5416,16 @@ int mocktail::legacy::Run(const runtime::CommandLineOptions& options,
         }
         bionic_vulkan_adapter_handle = h;
       }
+    } else if (std::strcmp(name, "libvulkan.so") == 0) {
+      std::cerr << "[FATAL] Nightcap's Vulkan adapter could not load: "
+                << ::dlerror()
+                << ". A system library it needs is missing or newer than "
+                   "the one Nightcap was built against; update or rebuild "
+                   "Nightcap, or switch the renderer to OpenGL.\n";
+      return EXIT_FAILURE;
     } else {
       std::cerr << "  [warn]  Could not preload " << name
                 << ": " << ::dlerror() << '\n';
-      // Direct Vulkan launches set MOCKTAIL_REQUIRE_REAL_GRAPHICS. Running
-      // anyway leaves the guest loader without a vkGetInstanceProcAddr to
-      // call and dies inside the engine with a null call; refuse instead.
-      if (IsEnabled("MOCKTAIL_REQUIRE_REAL_GRAPHICS") &&
-          std::strcmp(name, "libvulkan.so") == 0) {
-        std::cerr << "[FATAL] Nightcap's Vulkan adapter failed to load "
-                     "(see above). This usually means a system library its "
-                     "build linked against changed (for example libplacebo's "
-                     "soname). Rebuild Nightcap against the system "
-                     "libraries.\n";
-        return EXIT_FAILURE;
-      }
     }
   }
   void* real_gles_handle = nullptr;
