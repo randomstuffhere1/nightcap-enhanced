@@ -4,7 +4,7 @@ name: Build packages
 # publishes; `nightly` builds the rolling prerelease and adds what only the
 # nightly carries: the portable tarball and the aarch64 packages.
 #
-# aarch64 gets a .deb and an .rpm, but no AppImage, portable tarball or pacman
+# aarch64 gets a .deb and Fedora RPMs, but no AppImage, portable tarball or pacman
 # package: scripts/package_portable.sh is still x86-64 only, and Docker Hub
 # dropped arm64 from archlinux:base-devel. Both are one job away once either
 # changes.
@@ -69,7 +69,7 @@ jobs:
           gh run cancel ${{ github.run_id }} --repo ${{ github.repository }} || true
           exit 0
 
-      - name: Select the architectures
+      - name: Select the build matrix
         id: plan
         shell: bash
         env:
@@ -79,17 +79,19 @@ jobs:
           case "$CHANNEL" in
             release)
               echo 'deb=[{"arch":"x86_64","debarch":"amd64","runner":"ubuntu-26.04"}]' >>"$GITHUB_OUTPUT"
-              echo 'rpm=[{"arch":"x86_64","rpmarch":"x86_64","runner":"ubuntu-26.04"}]' >>"$GITHUB_OUTPUT"
+              rpm_arches='[{"arch":"x86_64","runner":"ubuntu-26.04"}]'
               ;;
             nightly)
               echo 'deb=[{"arch":"x86_64","debarch":"amd64","runner":"ubuntu-26.04"},{"arch":"aarch64","debarch":"arm64","runner":"ubuntu-26.04-arm"}]' >>"$GITHUB_OUTPUT"
-              echo 'rpm=[{"arch":"x86_64","rpmarch":"x86_64","runner":"ubuntu-26.04"},{"arch":"aarch64","rpmarch":"aarch64","runner":"ubuntu-26.04-arm"}]' >>"$GITHUB_OUTPUT"
+              rpm_arches='[{"arch":"x86_64","runner":"ubuntu-26.04"},{"arch":"aarch64","runner":"ubuntu-26.04-arm"}]'
               ;;
             *)
               echo "::error::unknown channel: $CHANNEL"
               exit 1
               ;;
           esac
+          rpm="$(jq -c '[.[] + {fedora: (44, 45)}]' <<<"$rpm_arches")"
+          echo "rpm=$rpm" >>"$GITHUB_OUTPUT"
 
   appimage:
     name: AppImage (AnyLinux, x86_64)
@@ -495,7 +497,7 @@ jobs:
           retention-days: 14
 
   rpm:
-    name: RPM (Fedora 44, ${{ matrix.arch }})
+    name: RPM (Fedora ${{ matrix.fedora }}, ${{ matrix.arch }})
     needs: plan
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
@@ -513,13 +515,14 @@ jobs:
       - name: Restore ccache
         uses: ./.github/actions/ccache
         with:
-          scope: ccache-rpm-${{ matrix.arch }}
+          scope: ccache-rpm-fc${{ matrix.fedora }}-${{ matrix.arch }}
           mode: restore
 
       - name: Build RPM
         shell: bash
         env:
           CHANNEL: ${{ inputs.channel }}
+          FEDORA: ${{ matrix.fedora }}
         run: |
           set -Eeuo pipefail
           if [[ "$CHANNEL" == nightly ]]; then
@@ -535,7 +538,7 @@ jobs:
             --env MOCKTAIL_PACKAGE_VERSION="$version" \
             --env CCACHE_DIR --env CCACHE_MAXSIZE --env CCACHE_COMPILERCHECK \
             --env CCACHE_BASEDIR=/workspace \
-            fedora:44 bash -Eeuo pipefail -c '
+            "fedora:$FEDORA" bash -Eeuo pipefail -c '
               dnf install --assumeyes \
                 gcc-c++ cmake git ninja-build pkgconf-pkg-config lld rpm-build \
                 ccache mold rust cargo \
@@ -566,13 +569,13 @@ jobs:
       - name: Save ccache
         uses: ./.github/actions/ccache
         with:
-          scope: ccache-rpm-${{ matrix.arch }}
+          scope: ccache-rpm-fc${{ matrix.fedora }}-${{ matrix.arch }}
           mode: save
 
       - name: Upload RPM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: Nightcap-RPM-${{ matrix.arch }}
+          name: Nightcap-RPM-fc${{ matrix.fedora }}-${{ matrix.arch }}
           path: dist/rpm/*.rpm
           if-no-files-found: error
           retention-days: 14

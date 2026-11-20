@@ -146,11 +146,8 @@ jobs:
           test -s release/Nightcap-x86_64.AppImage.zsync
           test -s release/Nightcap-x86_64-portable.tar.zst
           shopt -s nullglob
-          # The nightly builds an amd64 and an arm64 .deb, and an x86_64 and an
-          # aarch64 .rpm, so every pattern names one architecture. A generic
-          # '*.deb' would match both and fail the count. The aarch64 legs
-          # have no AppImage, tarball or pacman package, so the other two
-          # artifacts are unique on their own.
+          # Match DEBs by architecture and RPMs by both Fedora release and
+          # architecture so each pattern picks exactly one package.
           rename_one() {
             local glob="$1" name="$2" matched
             matched=(release/$glob)
@@ -163,8 +160,10 @@ jobs:
           rename_one '*.pkg.tar.zst' nightcap-nightly-x86_64.pkg.tar.zst
           rename_one '*amd64.deb' nightcap-nightly_amd64.deb
           rename_one '*arm64.deb' nightcap-nightly_arm64.deb
-          rename_one '*x86_64.rpm' nightcap-nightly-x86_64.rpm
-          rename_one '*aarch64.rpm' nightcap-nightly-aarch64.rpm
+          rename_one '*.fc44.x86_64.rpm' nightcap-nightly-fc44-x86_64.rpm
+          rename_one '*.fc44.aarch64.rpm' nightcap-nightly-fc44-aarch64.rpm
+          rename_one '*.fc45.x86_64.rpm' nightcap-nightly-fc45-x86_64.rpm
+          rename_one '*.fc45.aarch64.rpm' nightcap-nightly-fc45-aarch64.rpm
           (
             cd release
             # The zsync file carries its own signature format, so it is not
@@ -231,7 +230,7 @@ jobs:
           | Portable tarball | yes | no |
           | pacman `.pkg.tar.zst` | yes | no |
           | `.deb` | yes | yes |
-          | `.rpm` | yes | yes |
+           | `.rpm` (Fedora 44 and 45) | yes | yes |
 
           aarch64 has no AppImage, tarball or pacman package yet: the portable
           packager is still x86-64 only, and Docker Hub dropped arm64 from the
@@ -329,7 +328,12 @@ jobs:
           # Drop assets left by earlier runs under other names.
           while IFS= read -r asset; do
             case "$asset" in
-              SHA256SUMS|Nightcap-x86_64.AppImage|Nightcap-x86_64.AppImage.zsync|Nightcap-x86_64-portable.tar.zst|nightcap-nightly-x86_64.pkg.tar.zst|nightcap-nightly_amd64.deb|nightcap-nightly_arm64.deb|nightcap-nightly-x86_64.rpm|nightcap-nightly-aarch64.rpm|*.sha256)
+              *.sha256)
+                if [[ ! -f "release/$asset" ]]; then
+                  gh release delete-asset "$TAG" "$asset" -R "$repo" --yes
+                fi
+                ;;
+              SHA256SUMS|Nightcap-x86_64.AppImage|Nightcap-x86_64.AppImage.zsync|Nightcap-x86_64-portable.tar.zst|nightcap-nightly-x86_64.pkg.tar.zst|nightcap-nightly_amd64.deb|nightcap-nightly_arm64.deb|nightcap-nightly-fc4[45]-x86_64.rpm|nightcap-nightly-fc4[45]-aarch64.rpm)
                 ;;
               *)
                 gh release delete-asset "$TAG" "$asset" -R "$repo" --yes

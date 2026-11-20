@@ -5,11 +5,22 @@ Release notes on GitHub are taken from the matching section here.
 
 ## [Unreleased]
 
+### Added
+
+- Releases carry an RPM for Fedora 45 as well as Fedora 44.
+
+### Changed
+
+- Present mode in Settings shows what Default will use and is unavailable on OpenGL.
+
 ### Fixed
 
 - The sign-in captcha puzzle no longer gets covered by a load error when one of its answers is rejected.
 - Joining a game right after launch no longer freezes for seconds while the BC7 encoder is compiling.
 - Session logs no longer include the join ticket from Roblox's teleport log line.
+- Closing the window stops the game's sound right away.
+- Nintendo Switch Pro Controllers and Joy-Con pairs send A, B, X and Y as printed on the buttons.
+- The numpad `/` key opens chat like the main `/` key.
 
 ## [0.5.3] - 2026-11-17
 

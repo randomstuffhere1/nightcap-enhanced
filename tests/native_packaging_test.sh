@@ -41,6 +41,8 @@ grep -Fq 'CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON' "${CMAKE_FILE}" ||
   Fail 'DEB packages do not derive shared-library dependencies'
 grep -Fq 'CPACK_RPM_PACKAGE_AUTOREQPROV ON' "${CMAKE_FILE}" ||
   Fail 'RPM packages do not derive runtime requirements'
+grep -Fq 'CPACK_RPM_PACKAGE_RELEASE_DIST ON' "${CMAKE_FILE}" ||
+  Fail 'RPM packages do not include the Fedora dist tag'
 grep -Fq 'CPACK_DEBIAN_PACKAGE_DEPENDS "libavcodec${MOCKTAIL_LIBAVCODEC_MAJOR}' \
     "${CMAKE_FILE}" ||
   Fail 'DEB packages do not depend on the libavcodec video opens at runtime'
@@ -231,6 +233,9 @@ for expected in \
     'makepkg --dir' \
     '-G DEB' \
     '-G RPM' \
+    '{fedora: (44, 45)}' \
+    '"fedora:$FEDORA"' \
+    'Nightcap-RPM-fc${{ matrix.fedora }}-${{ matrix.arch }}' \
     '-DMOCKTAIL_PACKAGE_NAME=nightcap' \
     '-DMOCKTAIL_PACKAGE_VERSION=' \
     'package_version.sh --nightly' \
@@ -281,8 +286,10 @@ for expected in \
     'nightcap-nightly-x86_64.pkg.tar.zst' \
     'nightcap-nightly_amd64.deb' \
     'nightcap-nightly_arm64.deb' \
-    'nightcap-nightly-x86_64.rpm' \
-    'nightcap-nightly-aarch64.rpm' \
+    'nightcap-nightly-fc44-x86_64.rpm' \
+    'nightcap-nightly-fc44-aarch64.rpm' \
+    'nightcap-nightly-fc45-x86_64.rpm' \
+    'nightcap-nightly-fc45-aarch64.rpm' \
     'SHA256SUMS'; do
   grep -Fq -- "${expected}" "${WORKFLOW}" ||
     Fail "nightly workflow is missing: ${expected}"

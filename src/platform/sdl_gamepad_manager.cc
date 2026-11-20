@@ -22,13 +22,11 @@ GamepadFamily FamilyForType(SDL_GamepadType type) {
       return GamepadFamily::kPlayStation4;
     case SDL_GAMEPAD_TYPE_PS5:
       return GamepadFamily::kPlayStation5;
-    // The Switch Pro and both Joy-Cons share one face-button layout, and
-    // splitting them here would only mean mapping all of them the same way
-    // further down.
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+      return GamepadFamily::kNintendoSwitch;
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
-    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
       return GamepadFamily::kNintendo;
     case SDL_GAMEPAD_TYPE_GAMECUBE:
       return GamepadFamily::kGameCube;

@@ -68,10 +68,30 @@ float Trigger(int16_t raw) {
   return value <= kDeadzone ? 0.0F : (value - kDeadzone) / (1.0F - kDeadzone);
 }
 
+uint8_t SwapNintendoFaceButton(uint8_t button) {
+  switch (button) {
+    case SDL_GAMEPAD_BUTTON_SOUTH:
+      return SDL_GAMEPAD_BUTTON_EAST;
+    case SDL_GAMEPAD_BUTTON_EAST:
+      return SDL_GAMEPAD_BUTTON_SOUTH;
+    case SDL_GAMEPAD_BUTTON_WEST:
+      return SDL_GAMEPAD_BUTTON_NORTH;
+    case SDL_GAMEPAD_BUTTON_NORTH:
+      return SDL_GAMEPAD_BUTTON_WEST;
+    default:
+      return button;
+  }
+}
+
 }  // namespace
 
-int32_t MapSdlGamepadButtonToAndroid(uint8_t button) {
-  switch (button) {
+int32_t MapSdlGamepadButtonToAndroid(uint8_t button,
+                                     platform::GamepadFamily family) {
+  const uint8_t mapped_button =
+      family == platform::GamepadFamily::kNintendoSwitch
+          ? SwapNintendoFaceButton(button)
+          : button;
+  switch (mapped_button) {
     case SDL_GAMEPAD_BUTTON_SOUTH:
       return 96;
     case SDL_GAMEPAD_BUTTON_EAST:
@@ -113,13 +133,9 @@ int32_t MapSdlGamepadButtonToAndroid(uint8_t button) {
 //
 // 0 unknown, 1 PlayStation 4, 2 PlayStation 5, 3 Xbox.
 //
-// The client has no glyph set for a Switch pad or a GameCube pad, so those are
-// reported as the layout they most resemble rather than as themselves. Both put
-// their face buttons in the diamond position to the right of the centre, and
-// label the bottom button A and the right one B, which is the Xbox arrangement.
-// Reporting them as PlayStation would put the glyphs on the wrong physical
-// buttons, since PlayStation has the same diamond in a different place with A
-// and B swapped relative to it.
+// Switch Pro controllers and paired Joy-Cons use generic glyphs: their keycodes
+// match the printed labels rather than Xbox button positions. Single Joy-Cons
+// and GameCube pads keep the positional mapping and Xbox fallback glyphs.
 int32_t RobloxGamepadType(platform::GamepadFamily family) {
   // NativeInputInterface's Android gamepad types are not SDL_GamepadType.
   switch (family) {
@@ -131,14 +147,13 @@ int32_t RobloxGamepadType(platform::GamepadFamily family) {
     case platform::GamepadFamily::kNintendo:
     case platform::GamepadFamily::kGameCube:
       return 3;
+    case platform::GamepadFamily::kNintendoSwitch:
     default:
       return 0;
   }
 }
 
-// Whether RobloxGamepadType had to approximate the family. Startup says so when
-// it did, because a Switch pad reporting as an Xbox one is otherwise invisible
-// and looks like a bug.
+// Whether RobloxGamepadType used Xbox as the fallback for a known family.
 bool RobloxGamepadTypeIsApproximate(platform::GamepadFamily family) {
   return family == platform::GamepadFamily::kNintendo ||
          family == platform::GamepadFamily::kGameCube;
@@ -215,7 +230,8 @@ Status RobloxInputRouter::ConfigureGamepadLocked(const ActiveGamepad& gamepad,
   for (const uint8_t button : kButtons) {
     KeepFirstError(
         sink.supported_key(sink.context, gamepad.device_id,
-                           MapSdlGamepadButtonToAndroid(button),
+                           MapSdlGamepadButtonToAndroid(
+                               button, gamepad.descriptor.family),
                            available && Has(gamepad.descriptor.buttons, button),
                            type),
         &first_error);
@@ -273,7 +289,8 @@ RobloxInputDispatchResult RobloxInputRouter::HandleGamepadButtonLocked(
   if (!snapshot_.focused) {
     return {RobloxInputDispatchState::kIgnoredUnfocused, kind, Status::Ok()};
   }
-  const int32_t key = MapSdlGamepadButtonToAndroid(event.button);
+  const int32_t key =
+      MapSdlGamepadButtonToAndroid(event.button, found->descriptor.family);
   if (key < 0 || !Has(found->descriptor.buttons, event.button)) {
     return Ignored(kind, "gamepad button is not supported");
   }
@@ -359,7 +376,9 @@ Status RobloxInputRouter::ReleaseGamepadInputsLocked(ActiveGamepad& gamepad) {
       if (Has(gamepad.pressed_buttons, button)) {
         Status status =
             sink_.gamepad.button(sink_.gamepad.context, gamepad.device_id,
-                                 MapSdlGamepadButtonToAndroid(button), false);
+                                 MapSdlGamepadButtonToAndroid(
+                                     button, gamepad.descriptor.family),
+                                 false);
         if (status.ok()) {
           ++snapshot_.gamepad_events;
         }

@@ -8,6 +8,7 @@
 #include <set>
 #include <system_error>
 
+#include "mocktail/graphics/present_mode_resolve.h"
 #include "runtime/device_profile.h"
 #include "runtime/frame_rate_policy.h"
 #include "runtime/runtime_config.h"
@@ -538,17 +539,18 @@ const std::vector<SettingsPage>& SettingsPages() {
                   "Requires a restart to take effect."),
                  {"graphics.present_mode",
                   "Present mode",
-                  "How frames reach the display. Automatic follows the VSync "
-                  "setting; anything else here overrides it.",
+                  "Overrides VSync when set. Mailbox stops tearing and, where "
+                  "the driver allows it, does not cap the frame rate. Requires "
+                  "a restart.",
                   SettingKind::kChoice,
                   {
-                      {"auto", "Automatic"},
-                      {"fifo", "FIFO (VSync)"},
-                      {"mailbox", "Mailbox (no tearing)"},
-                      {"immediate", "Immediate (no VSync)"},
+                      {"", "Default"},
+                      {"fifo", "FIFO"},
+                      {"mailbox", "Mailbox"},
+                      {"immediate", "Immediate"},
                   },
-                  "auto",
-                  {}},
+                  "",
+                  {{"auto", ""}}},
                  {"graphics.pipeline_cache",
                   "Pipeline cache",
                   "A fallback copy of the driver's pipeline cache. The client "
@@ -1358,6 +1360,14 @@ bool ToggleState(const Setting& setting, std::string_view value) {
   return (value.empty() ? setting.default_value : value) == "true";
 }
 
+std::string PresentModeDefaultLabel(std::string_view vsync,
+                                    std::string_view frame_rate_limit) {
+  return graphics::ResolvePresentModePolicy(vsync, frame_rate_limit) ==
+                 graphics::PresentModePolicy::kUnthrottled
+             ? "Default (Immediate)"
+             : "Default (VSync)";
+}
+
 FrameRate ParseFrameRate(std::string_view value) {
   // The loader's own reading of the key, so the window and Nightcap cannot
   // disagree about what a value means.
@@ -1514,6 +1524,11 @@ bool SettingsDocument::IsActive(std::string_view key) const {
       Value("integrations.fleasion.proxy_mode") == "hosts") {
     return false;
   }
+  if (key == "graphics.present_mode" &&
+      runtime::RuntimeConfig::ParseGraphicsBackend(Value("graphics.backend")) ==
+          runtime::GraphicsBackend::kSystem) {
+    return false;
+  }
   for (std::size_t dot = key.find('.'); dot != std::string_view::npos;
        dot = key.find('.', dot + 1)) {
     const std::string switch_key = std::string(key.substr(0, dot)) + ".enabled";
@@ -1525,6 +1540,12 @@ bool SettingsDocument::IsActive(std::string_view key) const {
     }
   }
   return true;
+}
+
+std::string SettingsDocument::DefaultChoiceLabel(const Setting& setting) const {
+  if (setting.key != "graphics.present_mode") return {};
+  return PresentModeDefaultLabel(Value("graphics.vsync"),
+                                 Value("graphics.frame_rate_limit"));
 }
 
 bool SettingsDocument::IsChanged(const Setting& setting) const {

@@ -45,13 +45,17 @@ AndroidKeyMapping MapSdlKeyToAndroid(uint32_t sdl_scancode, uint32_t sdl_key = 0
 // MotionEvent button bits.
 int32_t MapSdlMouseButtonToRoblox(uint8_t sdl_button);
 
-int32_t MapSdlGamepadButtonToAndroid(uint8_t sdl_button);
+// Translates SDL gamepad buttons to Android keycodes. SDL3 names face buttons
+// by position. Swap them on Switch Pro and paired Joy-Cons so each printed
+// label goes to its matching A/B/X/Y keycode.
+int32_t MapSdlGamepadButtonToAndroid(
+    uint8_t sdl_button,
+    platform::GamepadFamily family = platform::GamepadFamily::kUnknown);
 // The integer the client uses to pick button art. Only values the client is
 // known to understand are ever returned; see the definition for the reasoning.
 int32_t RobloxGamepadType(platform::GamepadFamily family);
 // True when RobloxGamepadType reported a family as a different one because the
-// client has no glyph set for it. Startup says so, since otherwise a Switch pad
-// arriving as an Xbox one is invisible.
+// client has no glyph set for it.
 bool RobloxGamepadTypeIsApproximate(platform::GamepadFamily family);
 
 struct RobloxGamepadSink {
@@ -216,6 +220,8 @@ class RobloxInputRouter final {
   RobloxInputDispatchResult HandleTouchLocked(
       const platform::TouchEvent& event);
   RobloxInputDispatchResult HandleKeyLocked(const platform::KeyEvent& event);
+  AndroidKeyMapping MapNewKeyLocked(const platform::KeyEvent& event) const;
+  bool OtherSlashHeldLocked(const ActiveKey& key);
   RobloxInputDispatchResult HandleGamepadConnectionLocked(
       const platform::GamepadConnectionEvent& event);
   RobloxInputDispatchResult HandleGamepadButtonLocked(

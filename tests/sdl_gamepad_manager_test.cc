@@ -29,22 +29,19 @@ TEST(SdlGamepadFamilyTest, MapsEveryTypeTheClientHasArtFor) {
 // client as an unknown pad drawing generic glyphs.
 TEST(SdlGamepadFamilyTest, IdentifiesSwitchAndGameCubePads) {
   EXPECT_EQ(FamilyForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO),
-            GamepadFamily::kNintendo);
+            GamepadFamily::kNintendoSwitch);
   EXPECT_EQ(FamilyForType(SDL_GAMEPAD_TYPE_GAMECUBE),
             GamepadFamily::kGameCube);
 }
 
-// A Joy-Con is half a controller, and all four variants share one face-button
-// layout, so they are one family. Splitting them would only mean mapping all of
-// them the same way further along.
-TEST(SdlGamepadFamilyTest, TreatsEveryJoyConAsOneFamily) {
-  const GamepadFamily expected = GamepadFamily::kNintendo;
+// Paired Joy-Cons use the same printed-button mapping as a Switch Pro.
+TEST(SdlGamepadFamilyTest, SeparatesSingleJoyConsFromPairs) {
   EXPECT_EQ(FamilyForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT),
-            expected);
+            GamepadFamily::kNintendo);
   EXPECT_EQ(FamilyForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT),
-            expected);
+            GamepadFamily::kNintendo);
   EXPECT_EQ(FamilyForType(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR),
-            expected);
+            GamepadFamily::kNintendoSwitch);
 }
 
 // An unidentifiable pad stays unknown rather than being guessed at, and the
@@ -66,6 +63,7 @@ TEST(SdlGamepadFamilyTest, UnidentifiablePadsStayUnknown) {
       case GamepadFamily::kPlayStation5:
       case GamepadFamily::kNintendo:
       case GamepadFamily::kGameCube:
+      case GamepadFamily::kNintendoSwitch:
         break;
       default:
         ADD_FAILURE() << "type " << type << " produced an invalid family";
