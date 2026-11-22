@@ -739,6 +739,22 @@ const std::vector<SettingsPage>& SettingsPages() {
                  360,
                  10},
             }},
+           {"Controller",
+            {
+                {"input.controller_deadzone",
+                 "Stick deadzone",
+                 "How far a stick moves before it counts, in percent. Raise "
+                 "it if the camera or character drifts on its own. Requires a "
+                 "restart.",
+                 SettingKind::kNumber,
+                 {},
+                 "5",
+                 {},
+                 0,
+                 runtime::kMaximumControllerDeadzone,
+                 1,
+                 "Off"},
+            }},
            {"Device",
             {
                 {kDeviceKey,

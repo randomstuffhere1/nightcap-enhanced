@@ -41,6 +41,7 @@ class RobloxWindowInputRuntime final {
                                    const RobloxTextFocusProperties& properties);
   RobloxInputSnapshot Snapshot() const;
   void SetRawMouseEnabled(bool enabled);
+  void SetGamepadStickDeadzone(float fraction);
 
  private:
   static void PlatformEventCallback(void* context,

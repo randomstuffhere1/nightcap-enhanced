@@ -12,6 +12,8 @@ Release notes on GitHub are taken from the matching section here.
   right-click one to go back to Roblox's. Before, cursors had to be copied into the asset folder.
 - Settings has a Sounds page: pick an OGG, MP3 or WAV for the death, jump, landing, footsteps,
   falling, swimming, getting up and splash sounds, play your pick, or go back to Roblox's.
+- Settings > Input has a Stick deadzone row, from 0 (off) to 50%, for controllers that drift or need
+  finer aim. The config key is `input.controller_deadzone`.
 
 ### Changed
 
@@ -19,15 +21,21 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Fixed
 
+- Roblox 2.748 loads now, so the updater moves to it instead of staying on 2.746. The cursor settings
+  work on it too.
+- On X11 and XWayland, the pointer no longer leaves the window during a right-click camera drag, and it
+  returns to where the drag started.
 - The game world is no longer slightly blurry from Roblox drawing it a pixel smaller than the window.
 - The sign-in captcha puzzle no longer gets covered by a load error when one of its answers is rejected.
 - Joining a game right after launch no longer freezes for seconds while the BC7 encoder is compiling.
 - Session logs no longer include the join ticket from Roblox's teleport log line.
 - Closing the window stops the game's sound right away.
 - Nintendo Switch Pro Controllers and Joy-Con pairs send A, B, X and Y as printed on the buttons.
+- Controller sticks respond from 5% of their travel instead of 20%, so small aim corrections register.
 - The numpad `/` key opens chat like the main `/` key.
 - Roblox now trusts the CA bundle set in Settings, so a proxy like mitmproxy works without Fleasion
   instead of showing a Connection Error.
+- On Wayland with NVIDIA, the sign-in screen no longer stays on a blank box until the window is resized.
 
 ## [0.5.3] - 2026-11-17
 

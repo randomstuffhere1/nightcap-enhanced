@@ -69,7 +69,11 @@ struct InputCapabilityConfig {
   // for CPU time.
   std::uint32_t pump_hz = 240;
   bool pump_hz_valid = true;
+  int controller_deadzone = 5;
 };
+
+inline constexpr int kMaximumControllerDeadzone = 50;
+std::optional<int> ParseControllerDeadzone(std::string_view value);
 
 enum class OverlayPosition {
   kTopCenter,

@@ -135,6 +135,7 @@ class RobloxInputRuntime final {
                                 bool probe_current_position = true);
   bool SupportsGamepads() const;
   void SetRawMouseEnabled(bool enabled);
+  void SetGamepadStickDeadzone(float fraction);
 
   static void PlatformEventCallback(void* context,
                                     const platform::PlatformEvent& event);

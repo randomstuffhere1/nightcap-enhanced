@@ -236,7 +236,7 @@ constexpr std::array<Field, 5> kWindowAndDeviceFields{
           FieldKind::kBooleanDigits},
 };
 
-constexpr std::array<Field, 6> kInputFields{
+constexpr std::array<Field, 7> kInputFields{
     Field{"window.high_dpi", "MOCKTAIL_WIN_HIGH_DPI",
           FieldKind::kBooleanDigits},
     Field{"window.close_on_leave", "MOCKTAIL_WIN_CLOSE_ON_LEAVE",
@@ -244,6 +244,8 @@ constexpr std::array<Field, 6> kInputFields{
     Field{"input.touch_enabled", "MOCKTAIL_TOUCH_MODE",
           FieldKind::kBooleanOnOff},
     Field{"input.raw_mouse", "MOCKTAIL_RAW_MOUSE", FieldKind::kBooleanOnOff},
+    Field{"input.controller_deadzone", "MOCKTAIL_CONTROLLER_DEADZONE",
+          FieldKind::kBoundedUnsigned, 0, kMaximumControllerDeadzone},
     Field{"input.pump_hz", "MOCKTAIL_INPUT_PUMP_HZ",
           FieldKind::kBoundedUnsigned, 60, 360},
     Field{"compatibility.desktop_playability",
@@ -1279,6 +1281,10 @@ bool ExportRuntimeConfigEnvironment(const RuntimeConfig& config,
       SetEnvironmentValue("MOCKTAIL_INPUT_PUMP_HZ",
                           std::to_string(config.input_capabilities().pump_hz),
                           error) &&
+      SetEnvironmentValue(
+          "MOCKTAIL_CONTROLLER_DEADZONE",
+          std::to_string(config.input_capabilities().controller_deadzone),
+          error) &&
       SetEnvironmentValue("MOCKTAIL_DESKTOP_PLAYABILITY",
                           config.desktop_playability() ? "1" : "0", error) &&
       SetEnvironmentValue("MOCKTAIL_FRAME_RATE_LIMIT",

@@ -186,6 +186,7 @@ class RobloxInputRouter final {
   // Raw mouse sends look deltas in host units instead of guest surface units.
   // The reported pointer position stays in guest units either way.
   void SetRawMouseEnabled(bool enabled);
+  void SetGamepadStickDeadzone(float fraction);
 
  private:
   struct ActiveTouch {
@@ -272,6 +273,7 @@ class RobloxInputRouter final {
   // several, and the ones after the first reach the camera as a snap.
   bool absolute_look_suppressed_ = false;
   bool raw_mouse_ = false;
+  float stick_deadzone_ = 0.05F;
 };
 
 }  // namespace runtime

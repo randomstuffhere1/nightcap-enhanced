@@ -221,6 +221,17 @@ std::optional<int> ParseOverlayLocationOffset(std::string_view value) {
   return parsed;
 }
 
+std::optional<int> ParseControllerDeadzone(std::string_view value) {
+  int parsed = 0;
+  const char* end = value.data() + value.size();
+  const auto result = std::from_chars(value.data(), end, parsed);
+  if (result.ec != std::errc() || result.ptr != end || parsed < 0 ||
+      parsed > kMaximumControllerDeadzone) {
+    return std::nullopt;
+  }
+  return parsed;
+}
+
 std::string_view OverlayPositionName(OverlayPosition position) {
   for (const auto& [candidate, name] : kOverlayPositions) {
     if (candidate == position) {
@@ -398,6 +409,12 @@ RuntimeConfig RuntimeConfig::FromEnvironment(const Environment& environment) {
         &pump_hz);
     config.input_capabilities_.pump_hz =
         config.input_capabilities_.pump_hz_valid ? pump_hz : 240;
+  }
+  if (const auto deadzone = environment.Get("MOCKTAIL_CONTROLLER_DEADZONE");
+      deadzone.has_value()) {
+    config.input_capabilities_.controller_deadzone =
+        ParseControllerDeadzone(*deadzone).value_or(
+            config.input_capabilities_.controller_deadzone);
   }
   bool customized_device = false;
   config.device_profile_valid_ =

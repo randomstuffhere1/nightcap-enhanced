@@ -172,6 +172,9 @@ input:
   # keeps up with the fastest frames the client reports. Lower values free CPU
   # time; raise it only for a display and game that run above 240 FPS.
   pump_hz: 240
+  # Whole number from 0 to 50 (default: 5): how far a controller stick moves,
+  # in percent, before it counts. 0 turns the deadzone off.
+  controller_deadzone: 5
 
 overlay:
   # Boolean (default: false): show the game server's location for a few
