@@ -8,6 +8,10 @@ Release notes on GitHub are taken from the matching section here.
 ### Added
 
 - Releases carry an RPM for Fedora 45 as well as Fedora 44.
+- Settings > Appearance has a Cursors row: click Arrow, Pointer or Text to pick any PNG for it, and
+  right-click one to go back to Roblox's. Before, cursors had to be copied into the asset folder.
+- Settings has a Sounds page: pick an OGG, MP3 or WAV for the death, jump, landing, footsteps,
+  falling, swimming, getting up and splash sounds, play your pick, or go back to Roblox's.
 
 ### Changed
 
@@ -22,6 +26,8 @@ Release notes on GitHub are taken from the matching section here.
 - Closing the window stops the game's sound right away.
 - Nintendo Switch Pro Controllers and Joy-Con pairs send A, B, X and Y as printed on the buttons.
 - The numpad `/` key opens chat like the main `/` key.
+- Roblox now trusts the CA bundle set in Settings, so a proxy like mitmproxy works without Fleasion
+  instead of showing a Connection Error.
 
 ## [0.5.3] - 2026-11-17
 

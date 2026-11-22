@@ -512,9 +512,12 @@ endif()
 mocktail_apply_compile_options(mocktail_failure_dialog)
 
 add_library(mocktail_settings_model STATIC
+  src/ui/cursor_slots.cc
   src/ui/fflag_presets.cc
   src/ui/settings_model.cc
   src/ui/sky_pack.cc
+  src/ui/slot_files.cc
+  src/ui/sound_slots.cc
 )
 add_library(Mocktail::SettingsModel ALIAS mocktail_settings_model)
 target_include_directories(mocktail_settings_model PUBLIC include)
