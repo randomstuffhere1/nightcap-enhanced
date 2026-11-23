@@ -1483,8 +1483,8 @@ TEST(ShippedMetadataTest, DefaultPayloadHasABuiltinProfileAndMatchingReference) 
   const auto preferred = PreferredSupportedProfile(catalog.profiles);
   ASSERT_TRUE(preferred.has_value());
   if (compat::kGuestAbi == "x86_64") {
-    EXPECT_EQ(preferred->version_name, "2.746.1266");
-    EXPECT_EQ(preferred->version_code, 20836U);
+    EXPECT_EQ(preferred->version_name, "2.748.1527");
+    EXPECT_EQ(preferred->version_code, 22294U);
   } else {
     EXPECT_EQ(preferred->version_name, "2.736.1408");
     EXPECT_EQ(preferred->version_code, 2998U);
