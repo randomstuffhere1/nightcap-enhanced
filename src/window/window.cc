@@ -140,6 +140,7 @@ struct WindowState {
   int height = 720;
   bool initialised = false;
   bool quit_requested = false;
+  std::string quit_failure;
   // Written on the main thread. The render thread reads it to decide whether
   // to ask for the window to be shown.
   std::atomic<bool> visible{false};
@@ -161,6 +162,13 @@ struct WindowState {
 };
 
 static WindowState g_state;
+
+static void QuitBecause(std::string reason) {
+  if (g_state.quit_failure.empty()) {
+    g_state.quit_failure = std::move(reason);
+  }
+  g_state.quit_requested = true;
+}
 static std::atomic<int> g_real_swap_count{0};
 // Set by the render thread at its first frame; the main thread shows the
 // window, because SDL window calls belong to the main thread.
@@ -1748,6 +1756,12 @@ Status ResizeReadinessCompletionStatus() {
              ? Status::Ok()
              : g_resize_readiness_gate->CompletionStatus();
 }
+
+Status QuitFailureStatus() {
+  return g_state.quit_failure.empty()
+             ? Status::Ok()
+             : Status::Error(StatusCode::kPlatformError, g_state.quit_failure);
+}
 WindowViewportSnapshot GetWindowViewportSnapshot() {
   WindowViewportSnapshot snapshot;
   if (g_state.sdl_window == nullptr) {
@@ -2505,7 +2519,7 @@ void MaybeRequestFullscreenReadiness() {
     g_state.fullscreen_readiness_requested = true;
     g_state.fullscreen_readiness_present_baseline = present_count;
     if (!RequestFullscreenToggle("readiness")) {
-      g_state.quit_requested = true;
+      QuitBecause("The fullscreen readiness check could not enter fullscreen.");
     }
     return;
   }
@@ -2521,7 +2535,7 @@ void MaybeRequestFullscreenReadiness() {
   }
   g_state.fullscreen_readiness_return_requested = true;
   if (!RequestFullscreenToggle("readiness-return")) {
-    g_state.quit_requested = true;
+    QuitBecause("The fullscreen readiness check could not leave fullscreen.");
   }
 }
 
@@ -2538,7 +2552,8 @@ void MaybeRecoverVulkanSurface() {
   if (!recreate_status.ok()) {
     fprintf(stderr, "  [vulkan] surface recovery rejected: %s\n",
             recreate_status.message().c_str());
-    g_state.quit_requested = true;
+    QuitBecause("The game window's Vulkan surface could not be recreated: " +
+                recreate_status.message());
     return;
   }
   const WindowSurfaceSnapshot snapshot = g_window_surface_lifecycle.Snapshot();
@@ -2744,7 +2759,8 @@ bool PumpEvents() {
       if (!surface_status.ok()) {
         fprintf(stderr, "  [window] surface event rejected: %s\n",
                 surface_status.message().c_str());
-        g_state.quit_requested = true;
+        QuitBecause("The game window rejected a size or display change: " +
+                    surface_status.message());
       } else {
         const bool fullscreen_transition =
             event.type == SDL_EVENT_WINDOW_ENTER_FULLSCREEN ||
@@ -2754,7 +2770,9 @@ bool PumpEvents() {
           if (!refresh_status.ok()) {
             fprintf(stderr, "  [fullscreen] surface refresh rejected: %s\n",
                     refresh_status.message().c_str());
-            g_state.quit_requested = true;
+            QuitBecause("The game window could not refresh its surface after "
+                        "a fullscreen change: " +
+                        refresh_status.message());
           } else {
             fprintf(stderr,
                     "  [fullscreen] SDL transition committed state=%s "

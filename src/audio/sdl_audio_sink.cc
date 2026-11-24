@@ -357,8 +357,11 @@ class SdlAudioSink final : public AudioSink {
     }
 
     const bool was_paused = SDL_AudioDevicePaused(logical_device_id_);
-    const SDL_AudioDeviceID replacement =
-        SDL_OpenAudioDevice(requested_device, nullptr);
+    SDL_AudioDeviceID replacement = 0;
+    {
+      std::lock_guard<std::mutex> open_lock(SdlAudioDeviceOpenMutex());
+      replacement = SDL_OpenAudioDevice(requested_device, nullptr);
+    }
     if (replacement == 0) {
       switching_device_ = false;
       lock.unlock();
@@ -809,7 +812,11 @@ Status CreateSdlAudioSink(const SdlAudioSinkOptions& options,
   // and reported so the setting is not silently ignored, and the starvation
   // counter below is what tells the user whether the resulting size works.
   const int buffer_samples = AudioBufferSamplesFromEnvironment();
-  const SDL_AudioDeviceID logical_device = SDL_OpenAudioDevice(device, nullptr);
+  SDL_AudioDeviceID logical_device = 0;
+  {
+    std::lock_guard<std::mutex> open_lock(SdlAudioDeviceOpenMutex());
+    logical_device = SDL_OpenAudioDevice(device, nullptr);
+  }
   if (logical_device == 0) {
     return SdlError("SDL_OpenAudioDevice");
   }
