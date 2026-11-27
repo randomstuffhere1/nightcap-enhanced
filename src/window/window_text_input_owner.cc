@@ -52,7 +52,7 @@ void WindowTextInputOwner::SetEnabled(bool enabled) {
       enabled_.exchange(enabled, std::memory_order_acq_rel);
   if (enabled != was_enabled) {
     std::lock_guard<std::mutex> lock(mutex_);
-    has_pending_command_ = false;
+    pending_command_ = {};
     accepted_generation_ = 0;
   }
   if (!enabled && was_enabled) {
@@ -80,7 +80,6 @@ bool WindowTextInputOwner::RequestShowTextInput(
   accepted_generation_ = generation;
   pending_command_ = {CommandType::kShow, generation,
                       area.valid() ? area : kSafeDefaultArea, options};
-  has_pending_command_ = true;
   return true;
 }
 
@@ -96,7 +95,6 @@ bool WindowTextInputOwner::RequestHideTextInput(uint64_t generation) {
     return false;
   }
   pending_command_ = {CommandType::kHide, generation, {}, {}};
-  has_pending_command_ = true;
   return true;
 }
 
@@ -108,11 +106,11 @@ bool WindowTextInputOwner::Pump() {
   Command command;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!has_pending_command_) {
+    if (pending_command_.type == CommandType::kNone) {
       return true;
     }
     command = pending_command_;
-    has_pending_command_ = false;
+    pending_command_ = {};
   }
 
   if (command.type == CommandType::kHide) {
@@ -158,7 +156,7 @@ void WindowTextInputOwner::Shutdown() {
   enabled_.store(false, std::memory_order_release);
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    has_pending_command_ = false;
+    pending_command_ = {};
   }
   if (active_) {
     StopAndClear();

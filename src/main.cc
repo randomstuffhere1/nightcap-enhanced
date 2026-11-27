@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -139,27 +140,44 @@ class OtaPatchRestartWatch final {
 
   void Start(std::filesystem::path app_storage_file,
              std::vector<mocktail::runtime::OtaPatchSeed> patches) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (state_ == Lifecycle::kIdle) {
+        state_ = Lifecycle::kWatching;
+      }
+    }
     thread_ = std::thread([this, app_storage_file = std::move(app_storage_file),
                            patches = std::move(patches)] {
       const std::filesystem::path backups =
           OtaPatchBackupDirectory(app_storage_file);
       const auto deadline =
           std::chrono::steady_clock::now() + std::chrono::seconds(30);
-      while (!stop_ && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-        if (mocktail::runtime::CountUnrecordedOtaPatches(
-                app_storage_file, backups, patches) == 0) {
+      std::unique_lock<std::mutex> lock(mutex_);
+      const auto stopped = [this] { return state_ != Lifecycle::kWatching; };
+      while (!stopped() && std::chrono::steady_clock::now() < deadline) {
+        // The patch check still needs its periodic re-check; Stop wakes this
+        // wait instead of leaving the watcher to finish a full sleep.
+        condition_.wait_for(lock, std::chrono::milliseconds(250), stopped);
+        if (stopped() || std::chrono::steady_clock::now() >= deadline) {
+          break;
+        }
+        lock.unlock();
+        const bool unrecorded = mocktail::runtime::CountUnrecordedOtaPatches(
+                                    app_storage_file, backups, patches) != 0;
+        lock.lock();
+        if (!unrecorded) {
           continue;
         }
         const auto settle =
             std::chrono::steady_clock::now() + std::chrono::seconds(3);
-        while (!stop_ && std::chrono::steady_clock::now() < settle) {
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        while (!stopped() && std::chrono::steady_clock::now() < settle) {
+          condition_.wait_for(lock, std::chrono::milliseconds(100), stopped);
         }
-        if (stop_) {
+        if (stopped()) {
           return;
         }
-        restart_requested_ = true;
+        state_ = Lifecycle::kRestartRequested;
+        lock.unlock();
         std::cout << "  [runtime] restarting once to load the Roblox UI "
                      "downloaded on first launch\n"
                   << std::flush;
@@ -173,29 +191,64 @@ class OtaPatchRestartWatch final {
   }
 
   void Stop() {
-    stop_ = true;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (state_ != Lifecycle::kRestartRequested) {
+        state_ = Lifecycle::kStopped;
+      }
+      condition_.notify_all();
+    }
     if (thread_.joinable()) {
       thread_.join();
     }
   }
 
-  bool restart_requested() const { return restart_requested_; }
+  bool restart_requested() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return state_ == Lifecycle::kRestartRequested;
+  }
 
  private:
-  std::atomic<bool> stop_{false};
-  std::atomic<bool> restart_requested_{false};
+  // kWatching polls for unrecorded patches; kRestartRequested is terminal and
+  // must survive Stop() so main can still see the restart decision.
+  enum class Lifecycle : std::uint8_t {
+    kIdle,
+    kWatching,
+    kStopped,
+    kRestartRequested,
+  };
+  mutable std::mutex mutex_;
+  std::condition_variable condition_;
+  Lifecycle state_ = Lifecycle::kIdle;
   std::thread thread_;
 };
 
 constexpr char kSignedOutRestartVariable[] = "MOCKTAIL_SIGNED_OUT_RESTART";
-std::atomic<bool> g_account_switch_pending{false};
-std::atomic<bool> g_account_switch_restart{false};
-std::atomic<bool> g_signed_out_restart{false};
+
+// One self-restart request from the auth bridge. kSwitchPending is the
+// one-shot gate while the blob wait or sign-out cleanup is still in progress;
+// the two terminal values say what the next launch must do with cookies.
+enum class AccountSwitchReason : std::uint8_t {
+  kNone,
+  kSwitchPending,
+  kSignedIn,
+  kSignedOut,
+};
+std::atomic<AccountSwitchReason> g_account_switch{AccountSwitchReason::kNone};
 std::filesystem::path g_account_cookie_file;
 std::filesystem::path g_app_storage_file;
 
+bool AccountSwitchRestartRequested() {
+  const AccountSwitchReason reason =
+      g_account_switch.load(std::memory_order_acquire);
+  return reason == AccountSwitchReason::kSignedIn ||
+         reason == AccountSwitchReason::kSignedOut;
+}
+
 void RequestAccountSwitchRestart(void* vm, bool signed_in) {
-  if (g_account_switch_pending.exchange(true)) {
+  if (g_account_switch.exchange(AccountSwitchReason::kSwitchPending,
+                                std::memory_order_acq_rel) !=
+      AccountSwitchReason::kNone) {
     return;
   }
   if (signed_in) {
@@ -210,14 +263,15 @@ void RequestAccountSwitchRestart(void* vm, bool signed_in) {
                 << " length=" << result.blob.size()
                 << "; restarting signed in as the new account\n"
                 << std::flush;
-      g_account_switch_restart = true;
+      g_account_switch.store(AccountSwitchReason::kSignedIn,
+                             std::memory_order_release);
       setenv("MOCKTAIL_RESTART_REQUESTED", "1", 1);
       kill(getpid(), SIGTERM);
     }).detach();
     return;
   }
-  g_account_switch_restart = true;
-  g_signed_out_restart = true;
+  g_account_switch.store(AccountSwitchReason::kSignedOut,
+                         std::memory_order_release);
   // Stops new saves and finishes a queued one first, so it cannot write the
   // sign-in back after it is removed below.
   if (vm != nullptr) static_cast<jnivm::VM*>(vm)->ClearRobloxCredentialSink();
@@ -264,14 +318,15 @@ void RestartNightcap(bool after_ota_patches) {
       std::remove_if(environment.begin(), environment.end(),
                      [&](const std::string& variable) {
                        return variable.rfind(signed_out_prefix, 0) == 0 ||
-                              (g_account_switch_restart &&
+                              (AccountSwitchRestartRequested() &&
                                (variable.rfind("MOCKTAIL_ROBLOX_COOKIES=", 0) ==
                                     0 ||
                                 variable.rfind("MOCKTAIL_COOKIE_FILE=", 0) ==
                                     0));
                      }),
       environment.end());
-  if (g_signed_out_restart) {
+  if (g_account_switch.load(std::memory_order_acquire) ==
+      AccountSwitchReason::kSignedOut) {
     environment.push_back(signed_out_prefix + "1");
   }
   std::cout.flush();
@@ -1635,7 +1690,7 @@ static int RealMain(int argc, char* argv[]) {
       command_line.options.mode == mocktail::runtime::CommandMode::kRun) {
     failure_dialog.MarkSuccessful();
     support_bundle_guard.Disarm();
-    if (ota_restart_watch.restart_requested() || g_account_switch_restart) {
+    if (ota_restart_watch.restart_requested() || AccountSwitchRestartRequested()) {
       session_log = mocktail::runtime::SessionLog();
       RestartNightcap(ota_restart_watch.restart_requested());
     }

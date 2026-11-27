@@ -63,10 +63,12 @@ class WindowTextInputOwner final {
   uint64_t active_generation() const { return active_generation_; }
 
  private:
-  enum class CommandType { kShow, kHide };
+  // kNone is the empty queue state; a queued command always names its type,
+  // so no separate "has pending command" flag can drift out of sync.
+  enum class CommandType { kNone, kShow, kHide };
 
   struct Command {
-    CommandType type = CommandType::kHide;
+    CommandType type = CommandType::kNone;
     uint64_t generation = 0;
     TextInputArea area;
     TextInputOptions options;
@@ -77,7 +79,6 @@ class WindowTextInputOwner final {
   TextInputBackend* backend_ = nullptr;
   std::atomic<bool> enabled_{false};
   std::mutex mutex_;
-  bool has_pending_command_ = false;
   Command pending_command_;
   uint64_t accepted_generation_ = 0;
 

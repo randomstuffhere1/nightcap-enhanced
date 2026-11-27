@@ -19,7 +19,8 @@ bool WindowFullscreenRequestGate::RequestFromAndroidFlags(int flags, int mask) {
   const bool fullscreen =
       (android_flags_ & kAndroidWindowFlagFullscreen) != 0 &&
       (android_flags_ & kAndroidWindowFlagForceNotFullscreen) == 0;
-  pending_state_ = fullscreen ? 2 : 1;
+  pending_state_ = fullscreen ? PendingState::kFullscreen
+                              : PendingState::kWindowed;
   return true;
 }
 
@@ -28,17 +29,17 @@ bool WindowFullscreenRequestGate::Take(bool* fullscreen) {
     return false;
   }
   std::lock_guard<std::mutex> lock(mutex_);
-  if (pending_state_ == 0) {
+  if (pending_state_ == PendingState::kNone) {
     return false;
   }
-  *fullscreen = pending_state_ == 2;
-  pending_state_ = 0;
+  *fullscreen = pending_state_ == PendingState::kFullscreen;
+  pending_state_ = PendingState::kNone;
   return true;
 }
 
 void WindowFullscreenRequestGate::Reset() {
   std::lock_guard<std::mutex> lock(mutex_);
-  pending_state_ = 0;
+  pending_state_ = PendingState::kNone;
   android_flags_ = 0;
 }
 

@@ -200,8 +200,8 @@ bool WindowPointerCaptureOwner::Pump(bool text_input_active) {
       presented_frames_ != nullptr) {
     const std::uint64_t frames = PresentedFrames();
     const std::uint64_t now = NowMs();
-    if (!native_unlock_pending_) {
-      native_unlock_pending_ = true;
+    if (native_unlock_ == NativeUnlockState::kIdle) {
+      native_unlock_ = NativeUnlockState::kPending;
       native_unlock_frame_ = frames;
       native_unlock_ms_ = now;
     }
@@ -210,7 +210,7 @@ bool WindowPointerCaptureOwner::Pump(bool text_input_active) {
         now - native_unlock_ms_ < kNativeUnlockMs;
   }
   if (native_lock_active || !native_capture_active) {
-    native_unlock_pending_ = false;
+    native_unlock_ = NativeUnlockState::kIdle;
   }
   const bool roblox_pans = !query_ok || !mouse_lock.reports_current_position ||
                            mouse_lock.current_position;
@@ -227,26 +227,30 @@ bool WindowPointerCaptureOwner::Pump(bool text_input_active) {
       mouse_lock.current_position && !mouse_lock.center &&
       game_session_active_ && !text_input_active;
   if (!position_lock_reported) {
-    position_lock_pending_ = false;
-    position_lock_active_ = false;
-  } else if (!position_lock_active_) {
+    // Missing report resets the debounce. That is the behavior the RMB drag
+    // fallback relies on: a query that fails mid-settle must not keep a stale
+    // lock alive.
+    position_lock_ = PositionLockState::kIdle;
+  } else if (position_lock_ != PositionLockState::kActive) {
     if (right_button_held_ || presented_frames_ == nullptr) {
-      position_lock_pending_ = false;
+      position_lock_ = PositionLockState::kIdle;
     } else {
       const std::uint64_t frames = PresentedFrames();
       const std::uint64_t now = NowMs();
-      if (!position_lock_pending_) {
-        position_lock_pending_ = true;
+      if (position_lock_ == PositionLockState::kIdle) {
+        position_lock_ = PositionLockState::kPending;
         position_lock_frame_ = frames;
         position_lock_ms_ = now;
       }
-      position_lock_active_ =
+      position_lock_ =
           frames - position_lock_frame_ >= kPositionLockFrames &&
-          now - position_lock_ms_ >= kPositionLockMs;
+                  now - position_lock_ms_ >= kPositionLockMs
+              ? PositionLockState::kActive
+              : PositionLockState::kPending;
     }
   }
   const bool capture_requested =
-      native_capture_active || position_lock_active_ ||
+      native_capture_active || position_lock_ == PositionLockState::kActive ||
       (right_drag_active && !text_input_active);
   // When capture is released, Roblox still draws its own cursor. Show the
   // system pointer only when the native client cannot provide one, or when
@@ -296,21 +300,18 @@ void WindowPointerCaptureOwner::PublishRobloxCursor(CursorShape shape,
   }
   const std::uint64_t frame = PresentedFrames();
   std::lock_guard<std::mutex> lock(roblox_cursor_mutex_);
-  roblox_cursor_ = shape;
-  roblox_cursor_image_ = std::move(image);
-  roblox_cursor_reported_ = true;
-  roblox_cursor_frame_ = frame;
+  roblox_cursor_ = CursorReport{shape, std::move(image), frame};
 }
 
 std::pair<CursorShape, CursorImagePtr>
 WindowPointerCaptureOwner::CurrentRobloxCursor() {
   const std::uint64_t frame = PresentedFrames();
   std::lock_guard<std::mutex> lock(roblox_cursor_mutex_);
-  if (!roblox_cursor_reported_ ||
-      frame - roblox_cursor_frame_ > kRobloxCursorLifetimeFrames) {
+  if (!roblox_cursor_.has_value() ||
+      frame - roblox_cursor_->frame > kRobloxCursorLifetimeFrames) {
     return {CursorShape::kHidden, nullptr};
   }
-  return {roblox_cursor_, roblox_cursor_image_};
+  return {roblox_cursor_->shape, roblox_cursor_->image};
 }
 
 bool WindowPointerCaptureOwner::OnRightButton(
@@ -347,8 +348,7 @@ bool WindowPointerCaptureOwner::OnFocusLost() {
   focused_ = false;
   desktop_shows_roblox_cursor_.store(false, std::memory_order_relaxed);
   right_button_held_ = false;
-  position_lock_pending_ = false;
-  position_lock_active_ = false;
+  position_lock_ = PositionLockState::kIdle;
   // The pointer now belongs to whichever window took focus.
   return Apply(false, CursorShape::kArrow, nullptr, false, false);
 }
@@ -358,8 +358,7 @@ bool WindowPointerCaptureOwner::Shutdown() {
   focused_ = false;
   desktop_shows_roblox_cursor_.store(false, std::memory_order_relaxed);
   right_button_held_ = false;
-  position_lock_pending_ = false;
-  position_lock_active_ = false;
+  position_lock_ = PositionLockState::kIdle;
   return Apply(false, CursorShape::kArrow);
 }
 
@@ -388,8 +387,11 @@ bool WindowPointerCaptureOwner::Apply(bool capture, CursorShape cursor,
         (cursor == CursorShape::kHidden) != (cursor_ == CursorShape::kHidden);
     captured_ = capture;
     if (capture_changed) {
-      capture_release_motion_pending_ = !capture;
-      capture_release_ms_ = applied_ms;
+      if (capture) {
+        capture_release_motion_.reset();
+      } else {
+        capture_release_motion_ = applied_ms;
+      }
     }
     cursor_ = cursor;
     cursor_image_ = std::move(image);
@@ -411,8 +413,7 @@ bool WindowPointerCaptureOwner::Apply(bool capture, CursorShape cursor,
   }
   backend_->Apply(false, CursorShape::kArrow, nullptr, false, restore_pointer);
   if (captured_) {
-    capture_release_motion_pending_ = true;
-    capture_release_ms_ = applied_ms;
+    capture_release_motion_ = applied_ms;
   }
   captured_ = false;
   cursor_ = CursorShape::kArrow;

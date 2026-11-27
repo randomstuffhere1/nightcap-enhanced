@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -617,18 +618,22 @@ class DiscordRpcSession::Impl final {
     net::InitialiseCurl();
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (started_) {
+      if (state_ == Lifecycle::kRunning || state_ == Lifecycle::kStopping) {
         return true;
       }
       phase_ = RobloxExperiencePresencePhase::kBrowsing;
       request_ = {};
       revision_ = 1;
-      stopping_ = false;
-      cancel_lookup_.store(false, std::memory_order_relaxed);
+      state_ = Lifecycle::kStarting;
+      cancel_lookup_token_.store(false, std::memory_order_relaxed);
     }
     const int error =
         worker_.Start(&Impl::RunWorker, this, kDiscordWorkerStackBytes);
     if (error != 0) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (state_ == Lifecycle::kStarting) {
+        state_ = Lifecycle::kStopped;
+      }
       if (detail != nullptr) {
         *detail =
             "could not start Discord RPC worker: " + std::to_string(error);
@@ -636,31 +641,37 @@ class DiscordRpcSession::Impl final {
       return false;
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    started_ = true;
+    // A concurrent Stop may have moved us to kStopping while the worker was
+    // being created; keep that request instead of resurrecting kRunning.
+    if (state_ == Lifecycle::kStarting) {
+      state_ = Lifecycle::kRunning;
+    }
     return true;
   }
 
   void Stop() {
     {
       std::lock_guard<std::mutex> lock(mutex_);
-      if (!started_ && !worker_.joinable()) {
+      const bool started = state_ == Lifecycle::kRunning ||
+                           state_ == Lifecycle::kStopping;
+      if (!started && !worker_.joinable()) {
         return;
       }
-      stopping_ = true;
-      cancel_lookup_.store(true, std::memory_order_relaxed);
+      state_ = Lifecycle::kStopping;
+      cancel_lookup_token_.store(true, std::memory_order_relaxed);
       condition_.notify_all();
     }
     if (worker_.joinable()) {
       (void)worker_.WaitFor(-1, 1);
     }
     std::lock_guard<std::mutex> lock(mutex_);
-    started_ = false;
+    state_ = Lifecycle::kStopped;
   }
 
   void Update(RobloxExperiencePresencePhase phase,
               const RobloxExperienceLaunchRequest* request) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!started_ || stopping_) {
+    if (state_ != Lifecycle::kRunning) {
       return;
     }
     phase_ = phase;
@@ -721,7 +732,7 @@ class DiscordRpcSession::Impl final {
 
   bool IsStopping() {
     std::lock_guard<std::mutex> lock(mutex_);
-    return stopping_;
+    return state_ == Lifecycle::kStopping;
   }
 
   Desired Snapshot() {
@@ -732,9 +743,9 @@ class DiscordRpcSession::Impl final {
   bool WaitForChange(uint64_t revision, std::chrono::milliseconds duration) {
     std::unique_lock<std::mutex> lock(mutex_);
     condition_.wait_for(lock, duration, [this, revision]() {
-      return stopping_ || revision_ != revision;
+      return state_ == Lifecycle::kStopping || revision_ != revision;
     });
-    return !stopping_;
+    return state_ != Lifecycle::kStopping;
   }
 
   void Run() {
@@ -817,8 +828,8 @@ class DiscordRpcSession::Impl final {
 
       if (resolve_metadata_after_publish) {
         const ResolvedPlaceMetadata resolved =
-            ResolvePlaceMetadata(desired.request.place_id, &cancel_lookup_);
-        if (cancel_lookup_.load(std::memory_order_relaxed)) {
+            ResolvePlaceMetadata(desired.request.place_id, &cancel_lookup_token_);
+        if (cancel_lookup_token_.load(std::memory_order_relaxed)) {
           continue;
         }
         CachedPlaceMetadata& cached =
@@ -907,9 +918,19 @@ class DiscordRpcSession::Impl final {
   std::unordered_map<int64_t, CachedPlaceMetadata> place_metadata_;
   int64_t session_started_at_ = 0;
   uint64_t revision_ = 0;
-  bool started_ = false;
-  bool stopping_ = false;
-  std::atomic<bool> cancel_lookup_{false};
+  // The worker lifecycle. Guarded by mutex_. Started/stopping used to be two
+  // booleans; one state makes the impossible combinations unrepresentable.
+  enum class Lifecycle : std::uint8_t {
+    kStopped,
+    kStarting,
+    kRunning,
+    kStopping,
+  };
+  Lifecycle state_ = Lifecycle::kStopped;
+  // Separate concern, not a lifecycle phase: a one-way cancellation token for
+  // the metadata lookup currently in flight. Start clears it for the new
+  // generation and Stop sets it; there is no transition back within a run.
+  std::atomic<bool> cancel_lookup_token_{false};
 };
 
 DiscordRpcSession::DiscordRpcSession(DiscordRpcConfig config)

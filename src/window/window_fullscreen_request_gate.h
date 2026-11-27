@@ -21,10 +21,16 @@ class WindowFullscreenRequestGate final {
   void Reset();
 
  private:
+  // The latest coalesced request, or kNone once Take/Reset consumed it.
+  enum class PendingState : std::uint8_t {
+    kNone,
+    kWindowed,
+    kFullscreen,
+  };
+
   std::mutex mutex_;
   std::uint32_t android_flags_ = 0;
-  // 0 = no request, 1 = windowed, 2 = fullscreen.
-  int pending_state_ = 0;
+  PendingState pending_state_ = PendingState::kNone;
 };
 
 }  // namespace window

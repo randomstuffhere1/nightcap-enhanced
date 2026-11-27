@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <charconv>
+#include <cstdint>
 #include <limits>
 #include <mutex>
 #include <new>
@@ -15,6 +16,10 @@
 
 namespace mocktail::audio {
 namespace {
+
+// One lifecycle per capture: a shut-down stream never becomes running again,
+// and a running callback cannot observe a stop that has not happened yet.
+enum class CaptureState : std::uint8_t { kStopped, kRunning, kStopping };
 
 class SdlAudioCapture;
 
@@ -112,25 +117,27 @@ class SdlAudioCapture final : public AudioCapture {
 
   Status Start() override {
     std::lock_guard<std::mutex> lock(operation_mutex_);
-    if (stream_ == nullptr || stopping_.load(std::memory_order_acquire)) {
+    if (stream_ == nullptr ||
+        state_.load(std::memory_order_acquire) == CaptureState::kStopping) {
       return FailedPrecondition("SDL audio capture is shut down");
     }
-    if (running_.load(std::memory_order_acquire)) {
+    if (state_.load(std::memory_order_acquire) == CaptureState::kRunning) {
       return Status::Ok();
     }
     if (!SDL_ResumeAudioStreamDevice(stream_)) {
       return SdlError("SDL_ResumeAudioStreamDevice");
     }
-    running_.store(true, std::memory_order_release);
+    state_.store(CaptureState::kRunning, std::memory_order_release);
     return Status::Ok();
   }
 
   Status Stop() override {
     std::lock_guard<std::mutex> lock(operation_mutex_);
-    if (stream_ == nullptr || stopping_.load(std::memory_order_acquire)) {
+    if (stream_ == nullptr ||
+        state_.load(std::memory_order_acquire) == CaptureState::kStopping) {
       return Status::Ok();
     }
-    running_.store(false, std::memory_order_release);
+    state_.store(CaptureState::kStopped, std::memory_order_release);
     if (!SDL_PauseAudioStreamDevice(stream_)) {
       return SdlError("SDL_PauseAudioStreamDevice");
     }
@@ -147,8 +154,7 @@ class SdlAudioCapture final : public AudioCapture {
     if (stream_ == nullptr) {
       return;
     }
-    stopping_.store(true, std::memory_order_release);
-    running_.store(false, std::memory_order_release);
+    state_.store(CaptureState::kStopping, std::memory_order_release);
     (void)SDL_PauseAudioStreamDevice(stream_);
     SDL_DestroyAudioStream(stream_);
     stream_ = nullptr;
@@ -186,7 +192,7 @@ class SdlAudioCapture final : public AudioCapture {
   }
 
   Status StartReplacement() {
-    if (running_.load(std::memory_order_acquire) &&
+    if (state_.load(std::memory_order_acquire) == CaptureState::kRunning &&
         !SDL_ResumeAudioStreamDevice(replacement_))
       return SdlError("resume replacement microphone");
     return Status::Ok();
@@ -200,7 +206,7 @@ class SdlAudioCapture final : public AudioCapture {
   }
 
   Status RestoreAfterSwitch() {
-    if (running_.load(std::memory_order_acquire) &&
+    if (state_.load(std::memory_order_acquire) == CaptureState::kRunning &&
         !SDL_ResumeAudioStreamDevice(stream_))
       return SdlError("restore original microphone");
     return Status::Ok();
@@ -217,13 +223,13 @@ class SdlAudioCapture final : public AudioCapture {
                                        int /*total_amount*/) {
     auto* capture = static_cast<SdlAudioCapture*>(userdata);
     if (capture == nullptr || stream == nullptr ||
-        capture->stopping_.load(std::memory_order_acquire) ||
-        !capture->running_.load(std::memory_order_acquire)) {
+        capture->state_.load(std::memory_order_acquire) !=
+            CaptureState::kRunning) {
       return;
     }
     const int frame_bytes = static_cast<int>(capture->buffer_.size());
-    while (!capture->stopping_.load(std::memory_order_acquire) &&
-           capture->running_.load(std::memory_order_acquire)) {
+    while (capture->state_.load(std::memory_order_acquire) ==
+           CaptureState::kRunning) {
       const int available = SDL_GetAudioStreamAvailable(stream);
       if (available < frame_bytes) {
         return;
@@ -247,8 +253,7 @@ class SdlAudioCapture final : public AudioCapture {
   AudioCaptureDataCallback callback_ = nullptr;
   void* callback_context_ = nullptr;
   std::mutex operation_mutex_;
-  std::atomic<bool> running_{false};
-  std::atomic<bool> stopping_{false};
+  std::atomic<CaptureState> state_{CaptureState::kStopped};
   bool registered_ = false;
 };
 

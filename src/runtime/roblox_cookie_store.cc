@@ -6,6 +6,7 @@
 #include <spawn.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -13,6 +14,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <utility>
@@ -135,40 +137,60 @@ std::string ExchangeCookie(char operation, const std::filesystem::path& profile,
   request += "\n" + key + "\n";
   request.append(cookie);
   std::string response;
-  size_t sent = 0;
-  bool eof = false;
-  bool exited = false;
+  // One exchange state: while exchanging, the request is written and the
+  // reply read (write progress is `sent`); after EOF only the child's exit
+  // remains. `exited` is independent because a helper can exit before or
+  // after EOF.
+  enum class Phase : std::uint8_t { kExchanging, kAwaitingExit };
+  struct Exchange {
+    Phase phase = Phase::kExchanging;
+    size_t sent = 0;
+    bool exited = false;
+
+    bool eof() const { return phase == Phase::kAwaitingExit; }
+    bool finished() const { return exited && eof(); }
+  } exchange;
   int child_status = 0;
   const auto deadline =
       std::chrono::steady_clock::now() + std::chrono::seconds(15);
-  while (std::chrono::steady_clock::now() < deadline && !(eof && exited)) {
-    if (!exited) {
+  // After EOF the socket has nothing more to report. A pidfd lets poll wait
+  // for the child itself; a kernel without pidfd_open keeps the timed poll.
+  int child_wait_descriptor = -1;
+#ifdef SYS_pidfd_open
+  child_wait_descriptor = static_cast<int>(syscall(SYS_pidfd_open, child, 0));
+#endif
+  while (std::chrono::steady_clock::now() < deadline && !exchange.finished()) {
+    if (!exchange.exited) {
       const pid_t reaped = waitpid(child, &child_status, WNOHANG);
-      exited = reaped == child;
+      exchange.exited = reaped == child;
       if (reaped < 0 && errno != EINTR) {
-        exited = true;
+        exchange.exited = true;
         child_status = 1 << 8;
         break;
       }
     }
-    if (eof) {
-      (void)poll(nullptr, 0, 20);
+    if (exchange.eof()) {
+      pollfd child_poll{child_wait_descriptor, POLLIN, 0};
+      const int watched = child_wait_descriptor >= 0 ? 1 : 0;
+      (void)poll(watched != 0 ? &child_poll : nullptr, watched, 20);
       continue;
     }
-    pollfd socket{
-        sockets[0],
-        static_cast<short>(POLLIN | (sent < request.size() ? POLLOUT : 0)), 0};
+    pollfd socket{sockets[0],
+                  static_cast<short>(POLLIN |
+                                     (exchange.sent < request.size() ? POLLOUT
+                                                                     : 0)),
+                  0};
     if (poll(&socket, 1, 20) < 0) {
       if (errno == EINTR) continue;
       break;
     }
-    if ((socket.revents & POLLOUT) && sent < request.size()) {
-      const ssize_t count =
-          send(sockets[0], request.data() + sent, request.size() - sent,
-               MSG_NOSIGNAL | MSG_DONTWAIT);
+    if ((socket.revents & POLLOUT) && exchange.sent < request.size()) {
+      const ssize_t count = send(sockets[0], request.data() + exchange.sent,
+                                 request.size() - exchange.sent,
+                                 MSG_NOSIGNAL | MSG_DONTWAIT);
       if (count > 0) {
-        sent += static_cast<size_t>(count);
-        if (sent == request.size()) shutdown(sockets[0], SHUT_WR);
+        exchange.sent += static_cast<size_t>(count);
+        if (exchange.sent == request.size()) shutdown(sockets[0], SHUT_WR);
       } else if (count < 0 && errno != EINTR && errno != EAGAIN)
         break;
     }
@@ -177,7 +199,7 @@ std::string ExchangeCookie(char operation, const std::filesystem::path& profile,
       const ssize_t count =
           recv(sockets[0], buffer.data(), buffer.size(), MSG_DONTWAIT);
       if (count == 0)
-        eof = true;
+        exchange.phase = Phase::kAwaitingExit;
       else if (count > 0)
         response.append(buffer.data(), static_cast<size_t>(count));
       else if (errno != EINTR && errno != EAGAIN)
@@ -188,13 +210,14 @@ std::string ExchangeCookie(char operation, const std::filesystem::path& profile,
     }
   }
   close(sockets[0]);
+  if (child_wait_descriptor >= 0) close(child_wait_descriptor);
   ClearString(&request);
-  if (!exited) {
+  if (!exchange.exited) {
     kill(child, SIGKILL);
     while (waitpid(child, &child_status, 0) < 0 && errno == EINTR) {
     }
   }
-  if (!exited || !eof || !WIFEXITED(child_status) ||
+  if (!exchange.exited || !exchange.eof() || !WIFEXITED(child_status) ||
       WEXITSTATUS(child_status) != 0 ||
       response.size() > kMaximumCookieBytes + 1)
     ClearString(&response);
@@ -204,7 +227,7 @@ std::string ExchangeCookie(char operation, const std::filesystem::path& profile,
 class HelperSecretStore final : public NotifyingSecretStore {
  public:
   StoredCookie Load(const std::filesystem::path& profile) override {
-    if (!available_) return RobloxSecretStore::Load(profile);
+    if (!Available()) return RobloxSecretStore::Load(profile);
     std::string response = ExchangeCookie('L', profile);
     StoredCookie result;
     result.from_secret_store = true;
@@ -212,7 +235,7 @@ class HelperSecretStore final : public NotifyingSecretStore {
       result.status = StoredCookieStatus::kFound;
       result.value = response.substr(1);
     } else if (response != "M") {
-      available_ = false;
+      Disable();
       result = RobloxSecretStore::Load(profile);
     }
     ClearString(&response);
@@ -220,17 +243,29 @@ class HelperSecretStore final : public NotifyingSecretStore {
   }
   bool Store(const std::filesystem::path& profile,
              const std::string& cookie) override {
-    if (!available_) return false;
+    if (!Available()) return false;
     const bool stored = ExchangeCookie('S', profile, cookie) == "F";
-    if (!stored) available_ = false;
+    if (!stored) Disable();
     return stored;
   }
   bool Clear(const std::filesystem::path& profile) override {
-    return available_ && ExchangeCookie('C', profile) == "F";
+    return Available() && ExchangeCookie('C', profile) == "F";
   }
 
  private:
-  std::atomic<bool> available_{true};
+  // One-way gate: the first failed exchange disables the helper for this
+  // runtime, so every later call falls back to plain file storage.
+  enum class Availability : std::uint8_t { kAvailable, kDisabled };
+
+  bool Available() const {
+    return availability_.load(std::memory_order_acquire) ==
+           Availability::kAvailable;
+  }
+  void Disable() {
+    availability_.store(Availability::kDisabled, std::memory_order_release);
+  }
+
+  std::atomic<Availability> availability_{Availability::kAvailable};
 };
 
 }  // namespace

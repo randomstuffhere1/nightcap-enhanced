@@ -474,7 +474,12 @@ struct HostDevice {
   std::future<bool> encoder_check;
   std::chrono::steady_clock::time_point encoder_started;
   std::chrono::steady_clock::duration encoder_blocking{};
-  std::atomic<bool> encoder_pending{false};
+  // kBuilding waits on encoder_build, kChecking on encoder_check. A finished
+  // future stays in its last stage until FinishEncoder/DestroyDevice clears it.
+  enum class EncoderStage : std::uint8_t { kIdle, kBuilding, kChecking };
+  std::atomic<EncoderStage> encoder_stage{EncoderStage::kIdle};
+  // std::future is not safe for concurrent get/wait_for; this only guards the
+  // futures while FinishEncoder advances the stage, it is not lifecycle state.
   std::atomic<bool> encoder_busy{false};
 };
 
@@ -1865,6 +1870,24 @@ struct VulkanEtc2Emulation::State {
   std::unordered_map<VkQueue, QueueFamily> queue_families;
   std::atomic<bool> has_commands{false};
   std::optional<std::chrono::milliseconds> encoder_build_wait;
+  // Per-device stage is authoritative for which device is waiting; this count
+  // is the lock-free aggregate read by EncoderPending() on every submit. Both
+  // directions go through these helpers so the count cannot drift from the
+  // stages.
+  void MarkEncoderPending(HostDevice* device, HostDevice::EncoderStage stage) {
+    const HostDevice::EncoderStage previous =
+        device->encoder_stage.exchange(stage, std::memory_order_acq_rel);
+    if (previous == HostDevice::EncoderStage::kIdle) {
+      encoders_pending.fetch_add(1, std::memory_order_acq_rel);
+    }
+  }
+  void ClearEncoderPending(HostDevice* device) {
+    const HostDevice::EncoderStage previous = device->encoder_stage.exchange(
+        HostDevice::EncoderStage::kIdle, std::memory_order_acq_rel);
+    if (previous != HostDevice::EncoderStage::kIdle) {
+      encoders_pending.fetch_sub(1, std::memory_order_acq_rel);
+    }
+  }
   std::atomic<int> encoders_pending{0};
   std::mutex pool_mutex;
   std::map<std::pair<VkDevice, std::uint32_t>, VkCommandPool> pools;
@@ -4024,9 +4047,8 @@ void VulkanEtc2Emulation::DestroyDevice(VkDevice device) {
   if (building != nullptr && building->encoder_check.valid()) {
     building->encoder_check.wait();
   }
-  if (building != nullptr &&
-      building->encoder_pending.exchange(false, std::memory_order_acq_rel)) {
-    state_->encoders_pending.fetch_sub(1, std::memory_order_acq_rel);
+  if (building != nullptr) {
+    state_->ClearEncoderPending(building);
   }
   // Nothing may free staging or the semaphore while a decode still writes it.
   state_->DrainDecodes();
@@ -5977,8 +5999,7 @@ bool VulkanEtc2Emulation::EnableGpuDecode(VkDevice device, VkQueue queue,
     EndEncoder(*dev, check && check());
     return true;
   }
-  dev->encoder_pending.store(true, std::memory_order_release);
-  state_->encoders_pending.fetch_add(1, std::memory_order_acq_rel);
+  state_->MarkEncoderPending(dev, HostDevice::EncoderStage::kBuilding);
   std::fprintf(stderr,
                "  [vulkan] BC7 encoder still compiling after %lld ms; textures "
                "load uncompressed until it is ready\n",
@@ -6021,7 +6042,8 @@ void VulkanEtc2Emulation::FinishEncoder(VkQueue queue) {
   }
   HostDevice* const dev = state_->FindMutable(owner.device);
   if (dev == nullptr ||
-      !dev->encoder_pending.load(std::memory_order_acquire) ||
+      dev->encoder_stage.load(std::memory_order_acquire) ==
+          HostDevice::EncoderStage::kIdle ||
       owner.family != dev->decode_family ||
       dev->encoder_busy.exchange(true, std::memory_order_acq_rel)) {
     return;
@@ -6044,12 +6066,11 @@ void VulkanEtc2Emulation::FinishEncoder(VkQueue queue) {
         StartEncoder(*dev, queue, state_->encode_budget, state_->upscale);
     if (check) {
       dev->encoder_check = std::async(std::launch::async, std::move(check));
+      state_->MarkEncoderPending(dev, HostDevice::EncoderStage::kChecking);
       return;
     }
   }
-  if (dev->encoder_pending.exchange(false, std::memory_order_acq_rel)) {
-    state_->encoders_pending.fetch_sub(1, std::memory_order_acq_rel);
-  }
+  state_->ClearEncoderPending(dev);
   EndEncoder(*dev, passed);
 }
 

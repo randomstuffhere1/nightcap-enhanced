@@ -24,6 +24,7 @@
 #include <cerrno>
 #include <charconv>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <deque>
 #include <filesystem>
@@ -41,13 +42,21 @@ namespace mocktail {
 namespace runtime {
 
 struct WebViewHelperProcess::State {
+  // Readiness is latched: once the helper has announced its surface there is
+  // no transition back to waiting, including across DrainEvents calls.
+  enum class Readiness : std::uint8_t { kWaiting, kReady };
+
+  // These are owned OS handles, not phases: the child pid is for reaping, the
+  // descriptor is the control channel (closed independently on teardown), and
+  // tcp records which transport produced it. Folding them into one lifecycle
+  // enum would desynchronise teardown, so only readiness is a state here.
   std::atomic<pid_t> child{-1};
   std::mutex control_mutex;
   int control_descriptor = -1;
   std::deque<WebViewHelperEvent> pending_events;
   std::string receive_buffer;
   bool tcp = false;
-  bool ready = false;
+  Readiness readiness = Readiness::kWaiting;
 
   ~State() {
     if (control_descriptor >= 0) {
@@ -879,7 +888,11 @@ bool WebViewHelperProcess::WaitUntilReady(
   }
   const auto deadline = std::chrono::steady_clock::now() + timeout;
   std::lock_guard<std::mutex> lock(state_->control_mutex);
-  while (!state_->ready && state_->control_descriptor >= 0 &&
+  // Drain every packet already on the socket in arrival order, then wait for
+  // more. The deadline is checked before each drain so a late burst cannot be
+  // consumed after the timeout.
+  while (state_->readiness == WebViewHelperProcess::State::Readiness::kWaiting &&
+         state_->control_descriptor >= 0 &&
          state_->child.load(std::memory_order_acquire) > 0) {
     const auto remaining =
         std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -889,7 +902,8 @@ bool WebViewHelperProcess::WaitUntilReady(
     }
     std::string packet;
     bool closed = false;
-    while (!state_->ready) {
+    while (state_->readiness ==
+           WebViewHelperProcess::State::Readiness::kWaiting) {
       const ssize_t count = ReceivePacket(state_.get(), &packet);
       if (count == 0 || count == -2) {
         closed = true;
@@ -903,12 +917,13 @@ bool WebViewHelperProcess::WaitUntilReady(
         continue;
       }
       if (event.type == WebViewHelperEventType::kReady) {
-        state_->ready = true;
+        state_->readiness = WebViewHelperProcess::State::Readiness::kReady;
       } else {
         state_->pending_events.push_back(std::move(event));
       }
     }
-    if (closed || state_->ready) {
+    if (closed ||
+        state_->readiness == WebViewHelperProcess::State::Readiness::kReady) {
       break;
     }
     pollfd descriptor = {state_->control_descriptor, POLLIN, 0};
@@ -923,7 +938,7 @@ bool WebViewHelperProcess::WaitUntilReady(
       break;
     }
   }
-  return state_->ready;
+  return state_->readiness == WebViewHelperProcess::State::Readiness::kReady;
 }
 
 bool WebViewHelperProcess::DrainEvents(
@@ -951,7 +966,7 @@ bool WebViewHelperProcess::DrainEvents(
     WebViewHelperEvent event;
     if (DecodeWebViewHelperEventPacket(packet, &event)) {
       if (event.type == WebViewHelperEventType::kReady) {
-        state_->ready = true;
+        state_->readiness = WebViewHelperProcess::State::Readiness::kReady;
       } else {
         events->push_back(std::move(event));
       }

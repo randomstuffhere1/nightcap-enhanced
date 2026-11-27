@@ -100,11 +100,13 @@ class WindowPointerCaptureOwner final {
   // motion whose delta must not reach Roblox. True once, for the first moving
   // event stamped (on the owner's clock) at or after the release.
   bool TakeCaptureReleaseMotion(std::uint64_t event_ms, bool moved) {
-    if (!capture_release_motion_pending_ || !moved ||
-        event_ms < capture_release_ms_) {
+    // Engaged only from a capture change/release until the first qualifying
+    // motion event consumes it; the anchor is the release timestamp.
+    if (!capture_release_motion_.has_value() || !moved ||
+        event_ms < *capture_release_motion_) {
       return false;
     }
-    capture_release_motion_pending_ = false;
+    capture_release_motion_.reset();
     return true;
   }
   // Focus loss reveals the system cursor. Regaining focus must re-apply the
@@ -151,6 +153,22 @@ class WindowPointerCaptureOwner final {
   static constexpr std::uint64_t kPositionLockFrames = 10;
   static constexpr std::uint64_t kPositionLockMs = 150;
 
+  // Both locks are debounces with an anchor: they start on the first report,
+  // then hold until both a frame and a time budget have elapsed. Native unlock
+  // holds only for its grace window, which is recomputed on every Pump, so it
+  // has no latched active state. The position lock latches once it settles.
+  enum class NativeUnlockState : std::uint8_t { kIdle, kPending };
+  enum class PositionLockState : std::uint8_t { kIdle, kPending, kActive };
+
+  // A Roblox cursor report stays usable for kRobloxCursorLifetimeFrames after
+  // publication. Disengaged means no report has ever arrived; the frame anchor
+  // travels with the report so the two cannot be updated out of step.
+  struct CursorReport {
+    CursorShape shape = CursorShape::kHidden;
+    CursorImagePtr image;
+    std::uint64_t frame = 0;
+  };
+
   std::uint64_t PresentedFrames() const;
   std::uint64_t NowMs() const;
 
@@ -166,23 +184,30 @@ class WindowPointerCaptureOwner final {
   std::size_t in_flight_ = 0;
   bool clearing_ = false;
   bool focused_ = true;
+  // RMB drag has two independent axes: the button latch (set by the event,
+  // cleared by release/focus loss) and the pan latch (derived in Pump, skipped
+  // during text input, and cleared by the next focused Pump). A third flag for
+  // the experience's session and a fourth for the backend's capture result are
+  // inputs/outputs, not phases of the same machine, so they stay separate.
   bool right_button_held_ = false;
   bool right_drag_panning_ = false;
   // Written by the experience composition, read on the SDL thread.
   std::atomic<bool> game_session_active_{false};
-  bool capture_release_motion_pending_ = false;
-  std::uint64_t capture_release_ms_ = 0;
-  bool native_unlock_pending_ = false;
+  // One-shot token: armed by a capture change/release, taken by the first
+  // qualifying motion event. Empty means there is nothing to suppress.
+  std::optional<std::uint64_t> capture_release_motion_;
+  NativeUnlockState native_unlock_ = NativeUnlockState::kIdle;
   std::uint64_t native_unlock_frame_ = 0;
   std::uint64_t native_unlock_ms_ = 0;
-  bool position_lock_pending_ = false;
-  bool position_lock_active_ = false;
+  PositionLockState position_lock_ = PositionLockState::kIdle;
   std::uint64_t position_lock_frame_ = 0;
   std::uint64_t position_lock_ms_ = 0;
   bool captured_ = false;
   CursorShape cursor_ = CursorShape::kArrow;
   CursorImagePtr cursor_image_;
   bool pointer_centered_ = false;
+  // Independent one-shot token: armed when a centered capture starts, taken
+  // by the host's next recenter step. It can coexist with a release token.
   bool pointer_recenter_pending_ = false;
   // What showed when the current capture began. An RMB camera drag keeps it
   // on screen at the press point; kHidden leaves the drag to Roblox.
@@ -192,12 +217,8 @@ class WindowPointerCaptureOwner final {
   Clock now_ms_ = nullptr;
   // Written on Roblox's render thread, read on the SDL thread.
   std::mutex roblox_cursor_mutex_;
-  CursorShape roblox_cursor_ = CursorShape::kHidden;
-  CursorImagePtr roblox_cursor_image_;
-  bool roblox_cursor_reported_ = false;
+  std::optional<CursorReport> roblox_cursor_;
   std::atomic<bool> desktop_shows_roblox_cursor_{false};
-  // PresentedFrames() at the last report.
-  std::uint64_t roblox_cursor_frame_ = 0;
 };
 
 class SdlPointerCaptureBackend final : public PointerCaptureBackend {
