@@ -7,6 +7,18 @@ Release notes on GitHub are taken from the matching section here.
 
 ### Changed
 
+- `scripts/auto_update_roblox.sh` downloads its fallback Roblox version from APKPure like every other
+  download, instead of a pinned Uptodown copy.
+
+## [0.5.5] - 2026-11-27
+
+### Added
+
+- `MOCKTAIL_LAUNCH_PROGRAM` starts a program with the game and closes it when Nightcap closes, like
+  `MOCKTAIL_LAUNCH_PROGRAM="/path/to/app --flag"`.
+
+### Changed
+
 - The app icon has a bigger center hole, and the main window uses the same icon as Settings.
 - The error dialog now shows what went wrong, like the crash location or the fatal error from the log,
   instead of only saying there was an internal error. The text can be selected and copied.
@@ -17,10 +29,17 @@ Release notes on GitHub are taken from the matching section here.
   output. Terminal output that falls behind is left out there; the session log still has all of it.
 - Leaving a game or joining another no longer freezes the screen for about 12 seconds on NVIDIA.
   Nightcap keeps the game's Vulkan device and hands it back to the next game instead of destroying it.
+  The texture encoder is kept with it, so textures stay compressed right after a rejoin.
+- Moving, resizing or fullscreening the window no longer stutters the game on slow disks. Saving the
+  window position no longer waits for the disk.
 - Your mic no longer sounds choppy in voice chat. It sent audio in 20 to 40 ms bursts instead of every 10 ms.
 - The game no longer freezes when the sound device stops taking audio, for example after a PipeWire restart.
   Sound is dropped until the device recovers.
 - A speaker opened at the same moment as the mic no longer gets the mic's 5 ms buffer, which crackled.
+- Switching the sound output device no longer stalls game audio while the new device opens.
+- A slow voice chat call in the game no longer drops mic audio or can hang closing the mic. Mic audio is
+  handed to the game from its own thread instead of SDL's audio thread.
+- With vsync or a frame cap, the main loop no longer busy-waits between input polls.
 - Startup no longer hangs when another Nightcap holds the lock on Roblox's app storage.
 - Quitting during a game join no longer waits up to 10 seconds for the Discord status lookups.
 - Slow disks no longer make Nightcap quit at startup. Roblox's library gets 30 seconds to load instead of 3.
@@ -28,6 +47,8 @@ Release notes on GitHub are taken from the matching section here.
 - When Vulkan loses the game window's drawing surface, Nightcap tries to rebuild it.
 - If the game window can't open or can't rebuild its surface, Nightcap stops with an error saying why.
   Before, the window could close without any message.
+- Multithreaded rendering no longer turns on Roblox's terrain compression, which used about 20% more GPU
+  per frame in terrain-heavy games. Terrain textures also keep their full detail.
 
 ## [0.5.4] - 2026-11-22
 
@@ -786,7 +807,10 @@ First Nightcap release, forked from komaruworld/mocktail.
 - The FMOD output-device bridge is optional, so the updater no longer fails without it.
 - The AppImage build no longer fails on stale checksums for the slimmed Arch packages.
 
-[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/CoderDayton/nightcap/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.5
+[0.5.4]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.4
+[0.5.3]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.3
 [0.5.2]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.2
 [0.5.1]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.1
 [0.5.0]: https://github.com/CoderDayton/nightcap/releases/tag/v0.5.0

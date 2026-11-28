@@ -32,9 +32,8 @@ bool PumpEvents();
 void RequestQuit();
 
 // Paces SDL polling at the configured input pump rate (default 240 Hz) without
-// smoothing raw input. Returns the nanoseconds actually spent in
-// SDL_DelayPrecise (0 if the tick already missed the slot or SDL still has
-// events).
+// smoothing raw input. Returns the nanoseconds it asked to sleep (0 if the tick
+// already missed the slot or SDL still has events).
 uint64_t PaceInputPump();
 
 // True when CachedPresentModePolicy() is unthrottled.

@@ -194,6 +194,8 @@ struct VulkanTextOverlayCompositor::Impl {
     // zero and the host's own notices are layer one; either can be absent while
     // the other is shown.
     std::vector<OverlayLayer> layers;
+    // Reused for every upload; cleared after each, but keeps its capacity.
+    std::vector<std::uint8_t> source_pixels;
     bool enabled = true;
     bool dispatch_failure_logged = false;
     std::vector<QueueState> queues;
@@ -461,8 +463,8 @@ struct VulkanTextOverlayCompositor::Impl {
       return false;
     }
 
-    std::vector<std::uint8_t> pixels(
-        static_cast<std::size_t>(frame.rgba_bytes));
+    std::vector<std::uint8_t>& pixels = device->source_pixels;
+    pixels.resize(static_cast<std::size_t>(frame.rgba_bytes));
     if (!copy(frame.revision, pixels.data(), pixels.size())) {
       SecureClear(&pixels);
       return false;

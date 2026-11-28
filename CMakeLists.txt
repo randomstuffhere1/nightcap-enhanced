@@ -9,7 +9,7 @@
 
 cmake_minimum_required(VERSION 3.20)
 project(Mocktail
-  VERSION 0.5.4
+  VERSION 0.5.5
   DESCRIPTION "Android Roblox compatibility runtime for Linux"
   LANGUAGES CXX
 )
@@ -434,6 +434,7 @@ add_library(mocktail_runtime STATIC
   src/runtime/server_info.cc
   src/runtime/session_log.cc
   src/runtime/single_instance_lock.cc
+  src/runtime/launch_program.cc
   src/runtime/startup_state_machine.cc
   src/runtime/startup_trace.cc
   src/runtime/supported_launch_policy.cc
@@ -920,7 +921,6 @@ install(PROGRAMS "${MOCKTAIL_FREEBSD_SOCKET_HELPER}"
 endif()
 install(FILES
     config/roblox_compatibility.json
-    config/roblox_bootstrap_sources.json
     config/roblox_download_sources.json
     config/roblox_host_abi_reference.json
     config/roblox_signing_certificates.json
